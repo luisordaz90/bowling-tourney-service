@@ -1,0 +1,961 @@
+openapi: 3.0.3
+info:
+  title: Bowling Tournament API
+  description: API for managing bowling tournaments, teams, players, league days, and scores
+  version: 1.0.0
+  contact:
+    name: API Support
+servers:
+  - url: http://localhost:3000
+    description: Development server
+  - url: https://api.example.com
+    description: Production server
+
+paths:
+  /api/health:
+    get:
+      summary: Health check endpoint
+      tags:
+        - Health
+      responses:
+        '200':
+          description: API is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "OK"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  message:
+                    type: string
+                    example: "Bowling Tournament API is running"
+
+  /api/tournaments:
+    get:
+      summary: Get all tournaments
+      tags:
+        - Tournaments
+      responses:
+        '200':
+          description: List of tournaments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tournament'
+    post:
+      summary: Create a new tournament
+      tags:
+        - Tournaments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - startDate
+              properties:
+                name:
+                  type: string
+                  example: "Spring Championship 2024"
+                description:
+                  type: string
+                  example: "Annual spring bowling tournament"
+                startDate:
+                  type: string
+                  format: date-time
+                  example: "2024-03-15T10:00:00Z"
+                endDate:
+                  type: string
+                  format: date-time
+                  example: "2024-05-15T18:00:00Z"
+                maxTeams:
+                  type: integer
+                  minimum: 1
+                  example: 16
+      responses:
+        '201':
+          description: Tournament created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tournament'
+        '400':
+          description: Bad request - missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/tournaments/{id}:
+    get:
+      summary: Get tournament by ID
+      tags:
+        - Tournaments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tournament details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tournament'
+        '404':
+          description: Tournament not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update tournament
+      tags:
+        - Tournaments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                startDate:
+                  type: string
+                  format: date-time
+                endDate:
+                  type: string
+                  format: date-time
+                maxTeams:
+                  type: integer
+                status:
+                  type: string
+                  enum: [active, completed, cancelled]
+      responses:
+        '200':
+          description: Tournament updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tournament'
+        '404':
+          description: Tournament not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/tournaments/{tournamentId}/teams:
+    get:
+      summary: Get teams in tournament
+      tags:
+        - Teams
+      parameters:
+        - name: tournamentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of teams in tournament
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Team'
+    post:
+      summary: Register team in tournament
+      tags:
+        - Teams
+      parameters:
+        - name: tournamentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - captainName
+                - captainEmail
+              properties:
+                name:
+                  type: string
+                  example: "Strike Force"
+                captainName:
+                  type: string
+                  example: "John Doe"
+                captainEmail:
+                  type: string
+                  format: email
+                  example: "john.doe@example.com"
+                captainPhone:
+                  type: string
+                  example: "+1-555-123-4567"
+      responses:
+        '201':
+          description: Team registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          description: Bad request or tournament full
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Tournament not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/teams/{id}:
+    get:
+      summary: Get team by ID
+      tags:
+        - Teams
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Team details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '404':
+          description: Team not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update team
+      tags:
+        - Teams
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                captainName:
+                  type: string
+                captainEmail:
+                  type: string
+                  format: email
+                captainPhone:
+                  type: string
+                status:
+                  type: string
+                  enum: [registered, active, inactive]
+      responses:
+        '200':
+          description: Team updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '404':
+          description: Team not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/teams/{teamId}/players:
+    get:
+      summary: Get players in team
+      tags:
+        - Players
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of players in team
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Player'
+    post:
+      summary: Add player to team
+      tags:
+        - Players
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: "Jane Smith"
+                email:
+                  type: string
+                  format: email
+                  example: "jane.smith@example.com"
+                phone:
+                  type: string
+                  example: "+1-555-987-6543"
+                handicap:
+                  type: integer
+                  minimum: 0
+                  example: 15
+      responses:
+        '201':
+          description: Player added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Player'
+        '400':
+          description: Bad request - missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Team not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/tournaments/{tournamentId}/league-days:
+    get:
+      summary: Get league days for tournament
+      tags:
+        - League Days
+      parameters:
+        - name: tournamentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of league days
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeagueDay'
+    post:
+      summary: Create league day
+      tags:
+        - League Days
+      parameters:
+        - name: tournamentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - date
+                - week
+              properties:
+                date:
+                  type: string
+                  format: date-time
+                  example: "2024-03-22T19:00:00Z"
+                week:
+                  type: integer
+                  minimum: 1
+                  example: 1
+                description:
+                  type: string
+                  example: "Opening Week"
+      responses:
+        '201':
+          description: League day created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeagueDay'
+        '400':
+          description: Bad request - missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Tournament not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/league-days/{id}/status:
+    put:
+      summary: Update league day status
+      tags:
+        - League Days
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [scheduled, in-progress, completed]
+      responses:
+        '200':
+          description: League day status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeagueDay'
+        '400':
+          description: Invalid status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: League day not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/league-days/{leagueDayId}/scores:
+    get:
+      summary: Get scores for league day
+      tags:
+        - Scores
+      parameters:
+        - name: leagueDayId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of scores for league day
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Score'
+    post:
+      summary: Record score for league day
+      tags:
+        - Scores
+      parameters:
+        - name: leagueDayId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - teamId
+                - playerId
+                - game1
+                - game2
+                - game3
+              properties:
+                teamId:
+                  type: string
+                  format: uuid
+                playerId:
+                  type: string
+                  format: uuid
+                game1:
+                  type: integer
+                  minimum: 0
+                  maximum: 300
+                  example: 145
+                game2:
+                  type: integer
+                  minimum: 0
+                  maximum: 300
+                  example: 167
+                game3:
+                  type: integer
+                  minimum: 0
+                  maximum: 300
+                  example: 152
+                handicap:
+                  type: integer
+                  minimum: 0
+                  example: 15
+      responses:
+        '201':
+          description: Score recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Score'
+        '400':
+          description: Bad request - invalid scores or missing fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: League day not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/teams/{teamId}/scores:
+    get:
+      summary: Get scores for team
+      tags:
+        - Scores
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: leagueDayId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Optional filter by league day
+      responses:
+        '200':
+          description: List of team scores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Score'
+
+  /api/players/{playerId}/scores:
+    get:
+      summary: Get scores for player
+      tags:
+        - Scores
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of player scores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Score'
+
+  /api/tournaments/{tournamentId}/standings:
+    get:
+      summary: Get tournament standings
+      tags:
+        - Statistics
+      parameters:
+        - name: tournamentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tournament standings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Standing'
+        '404':
+          description: Tournament not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/tournaments/{tournamentId}/statistics:
+    get:
+      summary: Get tournament statistics
+      tags:
+        - Statistics
+      parameters:
+        - name: tournamentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tournament statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Statistics'
+        '404':
+          description: Tournament not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Tournament:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          example: "Spring Championship 2024"
+        description:
+          type: string
+          example: "Annual spring bowling tournament"
+        startDate:
+          type: string
+          format: date-time
+          example: "2024-03-15T10:00:00Z"
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-05-15T18:00:00Z"
+        maxTeams:
+          type: integer
+          example: 16
+        status:
+          type: string
+          enum: [active, completed, cancelled]
+          example: "active"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Team:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tournamentId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Strike Force"
+        captainName:
+          type: string
+          example: "John Doe"
+        captainEmail:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        captainPhone:
+          type: string
+          example: "+1-555-123-4567"
+        playerIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        registrationDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [registered, active, inactive]
+          example: "registered"
+        totalScore:
+          type: integer
+          example: 1450
+        gamesPlayed:
+          type: integer
+          example: 9
+
+    Player:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Jane Smith"
+        email:
+          type: string
+          format: email
+          example: "jane.smith@example.com"
+        phone:
+          type: string
+          example: "+1-555-987-6543"
+        handicap:
+          type: integer
+          minimum: 0
+          example: 15
+        averageScore:
+          type: integer
+          example: 145
+        gamesPlayed:
+          type: integer
+          example: 12
+        totalPins:
+          type: integer
+          example: 1740
+
+    LeagueDay:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tournamentId:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date-time
+          example: "2024-03-22T19:00:00Z"
+        week:
+          type: integer
+          example: 1
+        description:
+          type: string
+          example: "Opening Week"
+        status:
+          type: string
+          enum: [scheduled, in-progress, completed]
+          example: "scheduled"
+        createdAt:
+          type: string
+          format: date-time
+
+    Score:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        leagueDayId:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+        playerId:
+          type: string
+          format: uuid
+        game1:
+          type: integer
+          minimum: 0
+          maximum: 300
+          example: 145
+        game2:
+          type: integer
+          minimum: 0
+          maximum: 300
+          example: 167
+        game3:
+          type: integer
+          minimum: 0
+          maximum: 300
+          example: 152
+        totalScore:
+          type: integer
+          example: 464
+        handicap:
+          type: integer
+          example: 15
+        finalScore:
+          type: integer
+          example: 479
+        createdAt:
+          type: string
+          format: date-time
+
+    Standing:
+      type: object
+      properties:
+        rank:
+          type: integer
+          example: 1
+        teamId:
+          type: string
+          format: uuid
+        teamName:
+          type: string
+          example: "Strike Force"
+        captainName:
+          type: string
+          example: "John Doe"
+        totalScore:
+          type: integer
+          example: 4350
+        gamesPlayed:
+          type: integer
+          example: 24
+        averageScore:
+          type: integer
+          example: 181
+        seriesPlayed:
+          type: integer
+          example: 8
+
+    Statistics:
+      type: object
+      properties:
+        totalTeams:
+          type: integer
+          example: 12
+        totalPlayers:
+          type: integer
+          example: 48
+        totalGames:
+          type: integer
+          example: 288
+        highestGame:
+          type: integer
+          example: 298
+        highestSeries:
+          type: integer
+          example: 756
+        averageScore:
+          type: integer
+          example: 165
+        leagueDaysCompleted:
+          type: integer
+          example: 6
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Resource not found"
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Tournaments
+    description: Tournament management
+  - name: Teams
+    description: Team management
+  - name: Players
+    description: Player management
+  - name: League Days
+    description: League day scheduling
+  - name: Scores
+    description: Score recording and retrieval
+  - name: Statistics
+    description: Standings and statistics
