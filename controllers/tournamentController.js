@@ -1,8 +1,8 @@
-const { v4: uuidv4 } = require('uuid');
-const { tournaments, teams, players, teamPlayers, playerMatchScores, tournamentTeams, matches, leagueSessions } = require('../models');
-const { generateRoundRobinSchedule, validateRoundRobinSchedule, findById, findByIndex } = require('../utils/helpers');
+// controllers/tournamentController.js
+const { query, withTransaction } = require('../config/database');
+const { generateRoundRobinSchedule, validateRoundRobinSchedule } = require('../utils/helpers');
 
-const createTournament = (req, res) => {
+const createTournament = async (req, res) => {
   try {
     const { name, description, startDate, endDate, maxTeams, totalSessions, sessionType } = req.body;
     
@@ -12,196 +12,245 @@ const createTournament = (req, res) => {
       });
     }
 
-    const tournament = {
-      id: uuidv4(),
-      name,
-      description: description || null,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      maxTeams: parseInt(maxTeams),
-      totalSessions: parseInt(totalSessions),
-      sessionType,
-      sessionsCompleted: 0,
-      status: 'draft',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    const result = await query(
+      `INSERT INTO tournaments (name, description, start_date, end_date, max_teams, total_sessions, session_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [name, description, new Date(startDate), new Date(endDate), parseInt(maxTeams), parseInt(totalSessions), sessionType]
+    );
 
-    tournaments.push(tournament);
-    res.status(201).json(tournament);
+    res.status(201).json(result.rows[0]);
   } catch (error) {
+    console.error('Error creating tournament:', error);
     res.status(500).json({ error: 'Failed to create tournament' });
   }
 };
 
-const getAllTournaments = (req, res) => {
-  res.json(tournaments);
-};
-
-const getTournamentById = (req, res) => {
-  const tournament = findById(tournaments, req.params.id);
-  if (!tournament) {
-    return res.status(404).json({ error: 'Tournament not found' });
-  }
-  res.json(tournament);
-};
-
-const updateTournament = (req, res) => {
-  const index = findByIndex(tournaments, req.params.id);
-  if (index === -1) {
-    return res.status(404).json({ error: 'Tournament not found' });
-  }
-
-  const { name, description, startDate, endDate, maxTeams, totalSessions, sessionType, status, sessionsCompleted } = req.body;
-  const tournament = tournaments[index];
-
-  // Validate status
-  if (status && !['draft', 'active', 'completed', 'cancelled'].includes(status)) {
-    return res.status(400).json({ error: 'Invalid tournament status' });
-  }
-
-  tournaments[index] = {
-    ...tournament,
-    name: name || tournament.name,
-    description: description !== undefined ? description : tournament.description,
-    startDate: startDate ? new Date(startDate) : tournament.startDate,
-    endDate: endDate ? new Date(endDate) : tournament.endDate,
-    maxTeams: maxTeams ? parseInt(maxTeams) : tournament.maxTeams,
-    totalSessions: totalSessions ? parseInt(totalSessions) : tournament.totalSessions,
-    sessionType: sessionType || tournament.sessionType,
-    sessionsCompleted: sessionsCompleted !== undefined ? parseInt(sessionsCompleted) : tournament.sessionsCompleted,
-    status: status || tournament.status,
-    updatedAt: new Date()
-  };
-
-  res.json(tournaments[index]);
-};
-
-const deleteTournament = (req, res) => {
+const getAllTournaments = async (req, res) => {
   try {
-    const tournamentIndex = findByIndex(tournaments, req.params.id);
-    if (tournamentIndex === -1) {
+    const result = await query('SELECT * FROM tournaments ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching tournaments:', error);
+    res.status(500).json({ error: 'Failed to fetch tournaments' });
+  }
+};
+
+const getTournamentById = async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM tournaments WHERE id = $1', [req.params.id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching tournament:', error);
+    res.status(500).json({ error: 'Failed to fetch tournament' });
+  }
+};
+
+const updateTournament = async (req, res) => {
+  try {
+    const { name, description, startDate, endDate, maxTeams, totalSessions, sessionType, status, sessionsCompleted } = req.body;
+    
+    // Validate status if provided
+    if (status && !['draft', 'active', 'completed', 'cancelled'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid tournament status' });
+    }
+
+    const updateFields = [];
+    const updateValues = [];
+    let paramCounter = 1;
+
+    if (name !== undefined) {
+      updateFields.push(`name = $${paramCounter++}`);
+      updateValues.push(name);
+    }
+    if (description !== undefined) {
+      updateFields.push(`description = $${paramCounter++}`);
+      updateValues.push(description);
+    }
+    if (startDate !== undefined) {
+      updateFields.push(`start_date = $${paramCounter++}`);
+      updateValues.push(new Date(startDate));
+    }
+    if (endDate !== undefined) {
+      updateFields.push(`end_date = $${paramCounter++}`);
+      updateValues.push(new Date(endDate));
+    }
+    if (maxTeams !== undefined) {
+      updateFields.push(`max_teams = $${paramCounter++}`);
+      updateValues.push(parseInt(maxTeams));
+    }
+    if (totalSessions !== undefined) {
+      updateFields.push(`total_sessions = $${paramCounter++}`);
+      updateValues.push(parseInt(totalSessions));
+    }
+    if (sessionType !== undefined) {
+      updateFields.push(`session_type = $${paramCounter++}`);
+      updateValues.push(sessionType);
+    }
+    if (status !== undefined) {
+      updateFields.push(`status = $${paramCounter++}`);
+      updateValues.push(status);
+    }
+    if (sessionsCompleted !== undefined) {
+      updateFields.push(`sessions_completed = $${paramCounter++}`);
+      updateValues.push(parseInt(sessionsCompleted));
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
+    updateValues.push(req.params.id);
+
+    const result = await query(
+      `UPDATE tournaments SET ${updateFields.join(', ')} WHERE id = $${paramCounter} RETURNING *`,
+      updateValues
+    );
+
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
 
-    const tournamentId = req.params.id;
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating tournament:', error);
+    res.status(500).json({ error: 'Failed to update tournament' });
+  }
+};
 
-    // Remove all related data (cascade delete simulation)
-    leagueSessions.splice(0, leagueSessions.length, ...leagueSessions.filter(ls => ls.tournamentId !== tournamentId));
-    matches.splice(0, matches.length, ...matches.filter(m => m.tournamentId !== tournamentId));
-    tournamentTeams.splice(0, tournamentTeams.length, ...tournamentTeams.filter(tt => tt.tournamentId !== tournamentId));
-    teamPlayers.splice(0, teamPlayers.length, ...teamPlayers.filter(tp => tp.tournamentId !== tournamentId));
-    playerStatistics.splice(0, playerStatistics.length, ...playerStatistics.filter(ps => ps.tournamentId !== tournamentId));
-    teamStatistics.splice(0, teamStatistics.length, ...teamStatistics.filter(ts => ts.tournamentId !== tournamentId));
-    
-    // Remove match-related scores for matches that belonged to this tournament
-    const tournamentMatchIds = matches.filter(m => m.tournamentId === tournamentId).map(m => m.id);
-    playerMatchScores.splice(0, playerMatchScores.length, ...playerMatchScores.filter(pms => !tournamentMatchIds.includes(pms.matchId)));
-    teamMatchScores.splice(0, teamMatchScores.length, ...teamMatchScores.filter(tms => !tournamentMatchIds.includes(tms.matchId)));
+const deleteTournament = async (req, res) => {
+  try {
+    await withTransaction(async (client) => {
+      // Check if tournament exists
+      const tournamentResult = await client.query('SELECT id FROM tournaments WHERE id = $1', [req.params.id]);
+      
+      if (tournamentResult.rows.length === 0) {
+        throw new Error('Tournament not found');
+      }
 
-    // Finally remove the tournament
-    tournaments.splice(tournamentIndex, 1);
+      // Delete tournament (cascade will handle related records)
+      await client.query('DELETE FROM tournaments WHERE id = $1', [req.params.id]);
+    });
 
     res.status(204).send();
   } catch (error) {
+    console.error('Error deleting tournament:', error);
+    if (error.message === 'Tournament not found') {
+      return res.status(404).json({ error: error.message });
+    }
     res.status(500).json({ error: 'Failed to delete tournament' });
   }
 };
 
-const registerTeamToTournament =  (req, res) => {
+const registerTeamToTournament = async (req, res) => {
   try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
-      return res.status(404).json({ error: 'Tournament not found' });
-    }
-
     const { teamId, seedNumber } = req.body;
     
     if (!teamId) {
       return res.status(400).json({ error: 'Team ID is required' });
     }
 
-    const team = findById(teams, teamId);
-    if (!team) {
-      return res.status(404).json({ error: 'Team not found' });
-    }
+    await withTransaction(async (client) => {
+      // Check if tournament exists
+      const tournamentResult = await client.query('SELECT * FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+      if (tournamentResult.rows.length === 0) {
+        throw new Error('Tournament not found');
+      }
+      const tournament = tournamentResult.rows[0];
 
-    // Check if tournament is full
-    const tournamentTeamCount = tournamentTeams.filter(tt => tt.tournamentId === req.params.tournamentId).length;
-    if (tournamentTeamCount >= tournament.maxTeams) {
-      return res.status(400).json({ error: 'Tournament is full' });
-    }
+      // Check if team exists
+      const teamResult = await client.query('SELECT * FROM teams WHERE id = $1', [teamId]);
+      if (teamResult.rows.length === 0) {
+        throw new Error('Team not found');
+      }
 
-    // Check if team is already registered
-    const existingRegistration = tournamentTeams.find(tt => 
-      tt.tournamentId === req.params.tournamentId && tt.teamId === teamId
-    );
-    if (existingRegistration) {
-      return res.status(400).json({ error: 'Team is already registered for this tournament' });
-    }
+      // Check if tournament is full
+      const teamCountResult = await client.query(
+        'SELECT COUNT(*) FROM tournament_teams WHERE tournament_id = $1',
+        [req.params.tournamentId]
+      );
+      if (parseInt(teamCountResult.rows[0].count) >= tournament.max_teams) {
+        throw new Error('Tournament is full');
+      }
 
-    const tournamentTeam = {
-      id: uuidv4(),
-      tournamentId: req.params.tournamentId,
-      teamId,
-      seedNumber: seedNumber || null,
-      totalTournamentScore: 0.00,
-      gamesPlayedInTournament: 0,
-      sessionsPlayedInTournament: 0,
-      registrationDate: new Date(),
-      status: 'registered'
-    };
+      // Check if team is already registered
+      const existingResult = await client.query(
+        'SELECT id FROM tournament_teams WHERE tournament_id = $1 AND team_id = $2',
+        [req.params.tournamentId, teamId]
+      );
+      if (existingResult.rows.length > 0) {
+        throw new Error('Team is already registered for this tournament');
+      }
 
-    tournamentTeams.push(tournamentTeam);
-    res.status(201).json(tournamentTeam);
+      // Register team
+      const result = await client.query(
+        `INSERT INTO tournament_teams (tournament_id, team_id, seed_number)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [req.params.tournamentId, teamId, seedNumber || null]
+      );
+
+      res.status(201).json(result.rows[0]);
+    });
   } catch (error) {
+    console.error('Error registering team:', error);
+    if (['Tournament not found', 'Team not found', 'Tournament is full', 'Team is already registered for this tournament'].includes(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: 'Failed to register team for tournament' });
   }
-}
+};
 
-const getRegisteredTeamsInTournament = (req, res) => {
-  const tournamentTeamRegistrations = tournamentTeams.filter(tt => tt.tournamentId === req.params.tournamentId);
-  const teamsWithDetails = tournamentTeamRegistrations.map(tt => {
-    const team = findById(teams, tt.teamId);
-    return {
-      ...tt,
-      teamDetails: team
-    };
-  });
-  res.json(teamsWithDetails);
-}
-
-const registerPlayerToTeamInTournament =  (req, res) => {
+const getRegisteredTeamsInTournament = async (req, res) => {
   try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    const team = findById(teams, req.params.teamId);
-    
-    if (!tournament) {
-      return res.status(404).json({ error: 'Tournament not found' });
-    }
-    if (!team) {
-      return res.status(404).json({ error: 'Team not found' });
-    }
+    const result = await query(
+      `SELECT tt.*, t.name, t.captain_name, t.captain_email, t.captain_phone, t.status as team_status
+       FROM tournament_teams tt
+       JOIN teams t ON tt.team_id = t.id
+       WHERE tt.tournament_id = $1
+       ORDER BY tt.seed_number NULLS LAST, t.name`,
+      [req.params.tournamentId]
+    );
 
+    const teamsWithDetails = result.rows.map(row => ({
+      id: row.id,
+      tournament_id: row.tournament_id,
+      team_id: row.team_id,
+      seed_number: row.seed_number,
+      total_tournament_score: row.total_tournament_score,
+      games_played_in_tournament: row.games_played_in_tournament,
+      sessions_played_in_tournament: row.sessions_played_in_tournament,
+      registration_date: row.registration_date,
+      status: row.status,
+      teamDetails: {
+        id: row.team_id,
+        name: row.name,
+        captainName: row.captain_name,
+        captainEmail: row.captain_email,
+        captainPhone: row.captain_phone,
+        status: row.team_status
+      }
+    }));
+
+    res.json(teamsWithDetails);
+  } catch (error) {
+    console.error('Error fetching registered teams:', error);
+    res.status(500).json({ error: 'Failed to fetch registered teams' });
+  }
+};
+
+const registerPlayerToTeamInTournament = async (req, res) => {
+  try {
     const { playerId, role } = req.body;
     
     if (!playerId) {
       return res.status(400).json({ error: 'Player ID is required' });
-    }
-
-    const player = findById(players, playerId);
-    if (!player) {
-      return res.status(404).json({ error: 'Player not found' });
-    }
-
-    // Check if player is already assigned to this team in this tournament
-    const existingAssignment = teamPlayers.find(tp => 
-      tp.tournamentId === req.params.tournamentId && 
-      tp.teamId === req.params.teamId && 
-      tp.playerId === playerId
-    );
-    if (existingAssignment) {
-      return res.status(400).json({ error: 'Player is already assigned to this team in this tournament' });
     }
 
     // Validate role
@@ -210,256 +259,186 @@ const registerPlayerToTeamInTournament =  (req, res) => {
       return res.status(400).json({ error: 'Invalid player role' });
     }
 
-    const teamPlayer = {
-      id: uuidv4(),
-      teamId: req.params.teamId,
-      playerId,
-      tournamentId: req.params.tournamentId,
-      role: role || 'regular',
-      isActive: true,
-      joinedDate: new Date(),
-      leftDate: null
-    };
+    await withTransaction(async (client) => {
+      // Check if tournament exists
+      const tournamentResult = await client.query('SELECT id FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+      if (tournamentResult.rows.length === 0) {
+        throw new Error('Tournament not found');
+      }
 
-    teamPlayers.push(teamPlayer);
-    res.status(201).json(teamPlayer);
+      // Check if team exists
+      const teamResult = await client.query('SELECT id FROM teams WHERE id = $1', [req.params.teamId]);
+      if (teamResult.rows.length === 0) {
+        throw new Error('Team not found');
+      }
+
+      // Check if player exists
+      const playerResult = await client.query('SELECT id FROM players WHERE id = $1', [playerId]);
+      if (playerResult.rows.length === 0) {
+        throw new Error('Player not found');
+      }
+
+      // Check if team is registered in tournament
+      const teamTournamentResult = await client.query(
+        'SELECT id FROM tournament_teams WHERE tournament_id = $1 AND team_id = $2',
+        [req.params.tournamentId, req.params.teamId]
+      );
+      if (teamTournamentResult.rows.length === 0) {
+        throw new Error('Team is not registered in this tournament');
+      }
+
+      // Check if player is already assigned to this team in this tournament
+      const existingResult = await client.query(
+        'SELECT id FROM team_players WHERE tournament_id = $1 AND team_id = $2 AND player_id = $3',
+        [req.params.tournamentId, req.params.teamId, playerId]
+      );
+      if (existingResult.rows.length > 0) {
+        throw new Error('Player is already assigned to this team in this tournament');
+      }
+
+      // Assign player to team
+      const result = await client.query(
+        `INSERT INTO team_players (team_id, player_id, tournament_id, role)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [req.params.teamId, playerId, req.params.tournamentId, role || 'regular']
+      );
+
+      res.status(201).json(result.rows[0]);
+    });
   } catch (error) {
+    console.error('Error assigning player to team:', error);
+    if (['Tournament not found', 'Team not found', 'Player not found', 'Team is not registered in this tournament', 'Player is already assigned to this team in this tournament'].includes(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: 'Failed to assign player to team' });
   }
-
 };
 
-const getRegisteredPlayersInRegisteredTeamInTournament = (req, res) => {
-  const teamPlayerAssignments = teamPlayers.filter(tp => 
-    tp.tournamentId === req.params.tournamentId && 
-    tp.teamId === req.params.teamId &&
-    tp.isActive
-  );
-  
-  const playersWithDetails = teamPlayerAssignments.map(tp => {
-    const player = findById(players, tp.playerId);
-    return {
-      ...tp,
-      playerDetails: player
-    };
-  });
-  
-  res.json(playersWithDetails);
-};
-
-const registerSessionToTournament = (req, res) => {
+const getRegisteredPlayersInRegisteredTeamInTournament = async (req, res) => {
   try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
-      return res.status(404).json({ error: 'Tournament not found' });
-    }
+    const result = await query(
+      `SELECT tp.*, p.name, p.email, p.phone, p.handicap, p.average_score, p.total_games_played, p.total_pins
+       FROM team_players tp
+       JOIN players p ON tp.player_id = p.id
+       WHERE tp.tournament_id = $1 AND tp.team_id = $2 AND tp.is_active = true
+       ORDER BY tp.role, p.name`,
+      [req.params.tournamentId, req.params.teamId]
+    );
 
+    const playersWithDetails = result.rows.map(row => ({
+      id: row.id,
+      team_id: row.team_id,
+      player_id: row.player_id,
+      tournament_id: row.tournament_id,
+      role: row.role,
+      is_active: row.is_active,
+      joined_date: row.joined_date,
+      left_date: row.left_date,
+      playerDetails: {
+        id: row.player_id,
+        name: row.name,
+        email: row.email,
+        phone: row.phone,
+        handicap: row.handicap,
+        averageScore: parseFloat(row.average_score),
+        totalGamesPlayed: row.total_games_played,
+        totalPins: row.total_pins
+      }
+    }));
+
+    res.json(playersWithDetails);
+  } catch (error) {
+    console.error('Error fetching registered players:', error);
+    res.status(500).json({ error: 'Failed to fetch registered players' });
+  }
+};
+
+const registerSessionToTournament = async (req, res) => {
+  try {
     const { sessionNumber, sessionName, sessionDate, notes } = req.body;
     
     if (!sessionNumber || !sessionDate) {
       return res.status(400).json({ error: 'Session number and session date are required' });
     }
 
-    // Check if session number already exists for this tournament
-    const existingSession = leagueSessions.find(ls => 
-      ls.tournamentId === req.params.tournamentId && ls.sessionNumber === parseInt(sessionNumber)
-    );
-    if (existingSession) {
-      return res.status(400).json({ error: 'Session number already exists for this tournament' });
-    }
+    await withTransaction(async (client) => {
+      // Check if tournament exists
+      const tournamentResult = await client.query('SELECT id FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+      if (tournamentResult.rows.length === 0) {
+        throw new Error('Tournament not found');
+      }
 
-    const leagueSession = {
-      id: uuidv4(),
-      tournamentId: req.params.tournamentId,
-      sessionNumber: parseInt(sessionNumber),
-      sessionName: sessionName || `Session ${sessionNumber}`,
-      sessionDate: new Date(sessionDate),
-      status: 'scheduled',
-      notes: notes || null,
-      createdAt: new Date()
-    };
+      // Check if session number already exists for this tournament
+      const existingResult = await client.query(
+        'SELECT id FROM league_sessions WHERE tournament_id = $1 AND session_number = $2',
+        [req.params.tournamentId, parseInt(sessionNumber)]
+      );
+      if (existingResult.rows.length > 0) {
+        throw new Error('Session number already exists for this tournament');
+      }
 
-    leagueSessions.push(leagueSession);
-    res.status(201).json(leagueSession);
+      // Create league session
+      const result = await client.query(
+        `INSERT INTO league_sessions (tournament_id, session_number, session_name, session_date, notes)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [req.params.tournamentId, parseInt(sessionNumber), sessionName || `Session ${sessionNumber}`, new Date(sessionDate), notes || null]
+      );
+
+      res.status(201).json(result.rows[0]);
+    });
   } catch (error) {
+    console.error('Error creating league session:', error);
+    if (['Tournament not found', 'Session number already exists for this tournament'].includes(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: 'Failed to create league session' });
   }
 };
 
-const getRegisteredSessionsInTournament = (req, res) => {
-  const tournamentSessions = leagueSessions.filter(ls => ls.tournamentId === req.params.tournamentId);
-  res.json(tournamentSessions.sort((a, b) => a.sessionNumber - b.sessionNumber));
-}
-
-const getTournamentPlayersStatistics =  (req, res) => {
+const getRegisteredSessionsInTournament = async (req, res) => {
   try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
-      return res.status(404).json({ error: 'Tournament not found' });
-    }
-
-    // Get all player scores for this tournament and calculate statistics
-    const tournamentPlayerScores = playerMatchScores.filter(pms => {
-      const match = findById(matches, pms.matchId);
-      return match && match.tournamentId === req.params.tournamentId;
-    });
-
-    // Group by player
-    const playerStatsMap = {};
-    
-    tournamentPlayerScores.forEach(pms => {
-      if (!playerStatsMap[pms.playerId]) {
-        const player = findById(players, pms.playerId);
-        playerStatsMap[pms.playerId] = {
-          playerId: pms.playerId,
-          playerName: player ? player.name : 'Unknown Player',
-          teamId: pms.teamId,
-          tournamentId: req.params.tournamentId,
-          gamesPlayed: 0,
-          totalPins: 0,
-          currentAverage: 0,
-          highestGame: 0,
-          highestSeries: 0,
-          matchesPlayed: 0,
-          scores: []
-        };
-      }
-      
-      playerStatsMap[pms.playerId].scores.push(pms);
-      playerStatsMap[pms.playerId].gamesPlayed += 3;
-      playerStatsMap[pms.playerId].totalPins += pms.totalScore;
-      playerStatsMap[pms.playerId].matchesPlayed += 1;
-      
-      // Update highest game
-      const gameHighest = Math.max(pms.game1Score, pms.game2Score, pms.game3Score);
-      if (gameHighest > playerStatsMap[pms.playerId].highestGame) {
-        playerStatsMap[pms.playerId].highestGame = gameHighest;
-      }
-      
-      // Update highest series
-      if (pms.totalScore > playerStatsMap[pms.playerId].highestSeries) {
-        playerStatsMap[pms.playerId].highestSeries = pms.totalScore;
-      }
-    });
-
-    // Calculate averages
-    Object.values(playerStatsMap).forEach(playerStats => {
-      if (playerStats.gamesPlayed > 0) {
-        playerStats.currentAverage = parseFloat((playerStats.totalPins / playerStats.gamesPlayed).toFixed(2));
-      }
-      delete playerStats.scores; // Remove detailed scores from response
-    });
-
-    const allPlayerStats = Object.values(playerStatsMap);
-    
-    // Sort by highest average
-    allPlayerStats.sort((a, b) => b.currentAverage - a.currentAverage);
-
-    res.json(allPlayerStats);
+    const result = await query(
+      'SELECT * FROM league_sessions WHERE tournament_id = $1 ORDER BY session_number',
+      [req.params.tournamentId]
+    );
+    res.json(result.rows);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to get player statistics' });
+    console.error('Error fetching tournament sessions:', error);
+    res.status(500).json({ error: 'Failed to fetch tournament sessions' });
   }
 };
 
-const getTournamentTeamsStatistics = (req, res) => {
+const previewMatchMaking = async (req, res) => {
   try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
+    const tournamentResult = await query('SELECT * FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+    if (tournamentResult.rows.length === 0) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
-
-    const tournamentTeamRegistrations = tournamentTeams.filter(tt => tt.tournamentId === req.params.tournamentId);
-    
-    const teamStats = tournamentTeamRegistrations.map(tt => {
-      const team = findById(teams, tt.teamId);
-      
-      // Get team matches
-      const teamMatches = matches.filter(match => 
-        match.tournamentId === req.params.tournamentId && 
-        (match.homeTeamId === tt.teamId || match.awayTeamId === tt.teamId)
-      );
-
-      const completedMatches = teamMatches.filter(match => match.status === 'completed');
-      const matchesWon = completedMatches.filter(match => match.winnerTeamId === tt.teamId).length;
-      const matchesLost = completedMatches.length - matchesWon;
-
-      // Get team scores
-      const teamScores = teamMatchScores.filter(tms => {
-        const match = findById(matches, tms.matchId);
-        return match && match.tournamentId === req.params.tournamentId && tms.teamId === tt.teamId;
-      });
-
-      const totalTeamScore = teamScores.reduce((sum, tms) => sum + tms.finalTeamScore, 0);
-      const totalGames = teamScores.reduce((sum, tms) => sum + tms.gamesPlayed, 0);
-      const teamAverage = totalGames > 0 ? parseFloat((totalTeamScore / totalGames).toFixed(2)) : 0;
-
-      return {
-        teamId: tt.teamId,
-        teamName: team ? team.name : 'Unknown Team',
-        tournamentId: req.params.tournamentId,
-        totalMatchesPlayed: completedMatches.length,
-        matchesWon,
-        matchesLost,
-        totalTeamScore,
-        teamAverage,
-        rankPosition: null // Will be calculated after sorting
-      };
-    });
-
-    // Sort by matches won (descending), then by team average (descending)
-    teamStats.sort((a, b) => {
-      if (b.matchesWon !== a.matchesWon) {
-        return b.matchesWon - a.matchesWon;
-      }
-      return b.teamAverage - a.teamAverage;
-    });
-
-    // Add rank positions
-    teamStats.forEach((team, index) => {
-      team.rankPosition = index + 1;
-    });
-
-    res.json(teamStats);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to get team statistics' });
-  }
-};
-
-// Generate Round Robin Schedule (Preview)
-const previewMatchMaking = (req, res) => {
-  try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
-      return res.status(404).json({ error: 'Tournament not found' });
-    }
+    const tournament = tournamentResult.rows[0];
 
     // Get registered teams
-    const tournamentTeamRegistrations = tournamentTeams.filter(tt => 
-      tt.tournamentId === req.params.tournamentId && tt.status === 'registered'
+    const teamsResult = await query(
+      `SELECT tt.team_id, t.name, tt.seed_number
+       FROM tournament_teams tt
+       JOIN teams t ON tt.team_id = t.id
+       WHERE tt.tournament_id = $1 AND tt.status = 'registered'
+       ORDER BY tt.seed_number NULLS LAST, t.name`,
+      [req.params.tournamentId]
     );
 
-    if (tournamentTeamRegistrations.length < 2) {
+    if (teamsResult.rows.length < 2) {
       return res.status(400).json({ 
         error: 'At least 2 teams must be registered to generate round robin schedule' 
       });
     }
 
-    const registeredTeams = tournamentTeamRegistrations.map(tt => {
-      const team = findById(teams, tt.teamId);
-      return {
-        id: tt.teamId,
-        name: team ? team.name : 'Unknown Team',
-        seedNumber: tt.seedNumber
-      };
-    });
-
-    // Sort by seed number if available
-    registeredTeams.sort((a, b) => {
-      if (a.seedNumber && b.seedNumber) {
-        return a.seedNumber - b.seedNumber;
-      }
-      return a.name.localeCompare(b.name);
-    });
+    const registeredTeams = teamsResult.rows.map(row => ({
+      id: row.team_id,
+      name: row.name,
+      seedNumber: row.seed_number
+    }));
 
     // Generate round robin schedule
     const schedule = generateRoundRobinSchedule(registeredTeams);
@@ -477,8 +456,8 @@ const previewMatchMaking = (req, res) => {
       totalTeams: registeredTeams.length,
       hasOddTeams,
       sessionsRequired,
-      sessionsAvailable: tournament.totalSessions,
-      canFitInTournament: tournament.totalSessions >= sessionsRequired,
+      sessionsAvailable: tournament.total_sessions,
+      canFitInTournament: tournament.total_sessions >= sessionsRequired,
       totalMatches,
       expectedMatches,
       matchesPerTeam: registeredTeams.length - 1,
@@ -501,224 +480,49 @@ const previewMatchMaking = (req, res) => {
   }
 };
 
-// // Create Round Robin Matches
-const generateMatches = (req, res) => {
+const getTournamentSchedule = async (req, res) => {
   try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
+    const tournamentResult = await query('SELECT * FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+    if (tournamentResult.rows.length === 0) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
+    const tournament = tournamentResult.rows[0];
 
-    // Check if tournament already has matches
-    const existingMatches = matches.filter(match => match.tournamentId === req.params.tournamentId);
-    if (existingMatches.length > 0) {
-      return res.status(400).json({ 
-        error: 'Tournament already has scheduled matches. Delete existing matches first.' 
-      });
-    }
+    // Get tournament matches with team details
+    const matchesResult = await query(
+      `SELECT m.*, ht.name as home_team_name, at.name as away_team_name, ls.session_name
+       FROM matches m
+       JOIN teams ht ON m.home_team_id = ht.id
+       JOIN teams at ON m.away_team_id = at.id
+       LEFT JOIN league_sessions ls ON m.session_id = ls.id
+       WHERE m.tournament_id = $1
+       ORDER BY m.session_number NULLS LAST, m.created_at`,
+      [req.params.tournamentId]
+    );
 
-    const { 
-      startDate = null,
-      daysBetweenSessions = 7,
-      overrideTeamOrder = null,
-      forceCreate = false,
-      sessionTimeSlots = null // Optional: specific time slots for each session
-    } = req.body;
+    const tournamentMatches = matchesResult.rows;
+
+    // Get tournament sessions
+    const sessionsResult = await query(
+      'SELECT * FROM league_sessions WHERE tournament_id = $1 ORDER BY session_number',
+      [req.params.tournamentId]
+    );
+    const tournamentSessions = sessionsResult.rows;
 
     // Get registered teams
-    const tournamentTeamRegistrations = tournamentTeams.filter(tt => 
-      tt.tournamentId === req.params.tournamentId && tt.status === 'registered'
+    const teamsResult = await query(
+      `SELECT tt.*, t.name as team_name
+       FROM tournament_teams tt
+       JOIN teams t ON tt.team_id = t.id
+       WHERE tt.tournament_id = $1 AND tt.status = 'registered'`,
+      [req.params.tournamentId]
     );
-
-    if (tournamentTeamRegistrations.length < 2) {
-      return res.status(400).json({ 
-        error: 'At least 2 teams must be registered to generate round robin schedule' 
-      });
-    }
-
-    let registeredTeams = tournamentTeamRegistrations.map(tt => {
-      const team = findById(teams, tt.teamId);
-      return {
-        id: tt.teamId,
-        name: team ? team.name : 'Unknown Team',
-        seedNumber: tt.seedNumber
-      };
-    });
-
-    // Use override order if provided, otherwise sort by seed
-    if (overrideTeamOrder && Array.isArray(overrideTeamOrder)) {
-      const orderedTeams = [];
-      overrideTeamOrder.forEach(teamId => {
-        const team = registeredTeams.find(t => t.id === teamId);
-        if (team) orderedTeams.push(team);
-      });
-      registeredTeams = orderedTeams;
-    } else {
-      registeredTeams.sort((a, b) => {
-        if (a.seedNumber && b.seedNumber) {
-          return a.seedNumber - b.seedNumber;
-        }
-        return a.name.localeCompare(b.name);
-      });
-    }
-
-    // Generate round robin schedule
-    const schedule = generateRoundRobinSchedule(registeredTeams);
-    const sessionsRequired = schedule.length;
-    
-    // Validate schedule
-    const validationIssues = validateRoundRobinSchedule(schedule, registeredTeams.length);
-    
-    if (validationIssues.length > 0 && !forceCreate) {
-      return res.status(400).json({
-        error: 'Schedule validation failed. Use forceCreate=true to override.',
-        validationIssues,
-        schedule
-      });
-    }
-
-    // Check if tournament has enough sessions
-    if (tournament.totalSessions < sessionsRequired && !forceCreate) {
-      return res.status(400).json({
-        error: `Tournament needs ${sessionsRequired} sessions but only has ${tournament.totalSessions} configured. Update tournament.totalSessions or use forceCreate=true.`,
-        sessionsRequired,
-        sessionsAvailable: tournament.totalSessions
-      });
-    }
-
-    // Calculate session dates
-    const baseDate = startDate ? new Date(startDate) : new Date(tournament.startDate);
-    const sessionDates = [];
-    for (let i = 0; i < sessionsRequired; i++) {
-      const sessionDate = new Date(baseDate);
-      sessionDate.setDate(baseDate.getDate() + (i * daysBetweenSessions));
-      
-      // Apply custom time slots if provided
-      if (sessionTimeSlots && sessionTimeSlots[i]) {
-        const timeSlot = sessionTimeSlots[i];
-        if (timeSlot.hour !== undefined) sessionDate.setHours(timeSlot.hour);
-        if (timeSlot.minute !== undefined) sessionDate.setMinutes(timeSlot.minute);
-      }
-      
-      sessionDates.push(sessionDate);
-    }
-
-    // Create matches
-    const createdMatches = [];
-    schedule.forEach((session, sessionIndex) => {
-      const sessionDate = sessionDates[sessionIndex];
-      
-      session.matches.forEach((match, matchIndex) => {
-        const matchData = {
-          id: uuidv4(),
-          tournamentId: req.params.tournamentId,
-          homeTeamId: match.homeTeam.id,
-          awayTeamId: match.awayTeam.id,
-          sessionId: null, // Will be set after creating sessions
-          sessionNumber: session.sessionNumber,
-          weekNumber: session.sessionNumber, // Keep for backward compatibility
-          matchDate: sessionDate,
-          matchName: `Session ${session.sessionNumber} - ${match.homeTeam.name} vs ${match.awayTeam.name}`,
-          status: 'scheduled',
-          winnerTeamId: null,
-          sessionMatchNumber: matchIndex + 1,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
-        
-        matches.push(matchData);
-        createdMatches.push(matchData);
-      });
-    });
-
-    // Create sessions
-    const createdSessions = [];
-    schedule.forEach((session, index) => {
-      const sessionExists = leagueSessions.find(ls => 
-        ls.tournamentId === req.params.tournamentId && ls.sessionNumber === session.sessionNumber
-      );
-      
-      if (!sessionExists) {
-        const byeInfo = session.byeTeam ? ` (${session.byeTeam.name} has bye)` : '';
-        const sessionData = {
-          id: uuidv4(),
-          tournamentId: req.params.tournamentId,
-          sessionNumber: session.sessionNumber,
-          sessionName: `Round Robin Session ${session.sessionNumber}`,
-          sessionDate: sessionDates[index],
-          status: 'scheduled',
-          notes: `Automatically generated round robin session - ${session.matches.length} matches, ${session.teamsPlaying} teams playing${byeInfo}`,
-          createdAt: new Date()
-        };
-        
-        leagueSessions.push(sessionData);
-        createdSessions.push(sessionData);
-        
-        // Update match sessionId references
-        createdMatches
-          .filter(match => match.sessionNumber === session.sessionNumber)
-          .forEach(match => {
-            match.sessionId = sessionData.id;
-          });
-      }
-    });
-
-    // Update tournament sessions count if needed
-    if (tournament.totalSessions < sessionsRequired) {
-      const tournamentIndex = findByIndex(tournaments, req.params.tournamentId);
-      if (tournamentIndex !== -1) {
-        tournaments[tournamentIndex].totalSessions = sessionsRequired;
-        tournaments[tournamentIndex].updatedAt = new Date();
-      }
-    }
-
-    const result = {
-      tournamentId: req.params.tournamentId,
-      totalMatchesCreated: createdMatches.length,
-      totalSessionsCreated: createdSessions.length,
-      totalTeams: registeredTeams.length,
-      sessionsRequired,
-      validationIssues,
-      wasForced: validationIssues.length > 0 && forceCreate,
-      schedule,
-      createdMatches,
-      createdSessions,
-      scheduleInfo: {
-        hasOddTeams: registeredTeams.length % 2 === 1,
-        teamsPerSession: registeredTeams.length % 2 === 0 ? registeredTeams.length : registeredTeams.length - 1,
-        matchesPerSession: Math.floor(registeredTeams.length / 2),
-        byeSchedule: schedule.map(s => ({
-          session: s.sessionNumber,
-          byeTeam: s.byeTeam?.name || null
-        }))
-      }
-    };
-
-    res.status(201).json(result);
-  } catch (error) {
-    console.error('Error creating round robin matches:', error);
-    res.status(500).json({ error: 'Failed to create round robin schedule' });
-  }
-};
-
-// Get Tournament Schedule Summary
-const getTournamentSchedule = (req, res) => {
-  try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
-      return res.status(404).json({ error: 'Tournament not found' });
-    }
-
-    const tournamentMatches = matches.filter(match => match.tournamentId === req.params.tournamentId);
-    const tournamentSessions = leagueSessions.filter(ls => ls.tournamentId === req.params.tournamentId);
-    const registeredTeams = tournamentTeams.filter(tt => 
-      tt.tournamentId === req.params.tournamentId && tt.status === 'registered'
-    );
+    const registeredTeams = teamsResult.rows;
 
     // Group matches by session with team validation
     const sessionAnalysis = {};
     tournamentMatches.forEach(match => {
-      const session = match.sessionNumber || 'Unassigned';
+      const session = match.session_number || 'Unassigned';
       if (!sessionAnalysis[session]) {
         sessionAnalysis[session] = {
           matches: [],
@@ -731,21 +535,19 @@ const getTournamentSchedule = (req, res) => {
       sessionData.matches.push(match);
       
       // Check for team conflicts (team playing multiple matches in same session)
-      if (sessionData.teamsPlaying.has(match.homeTeamId) || sessionData.teamsPlaying.has(match.awayTeamId)) {
-        const homeTeam = findById(teams, match.homeTeamId);
-        const awayTeam = findById(teams, match.awayTeamId);
+      if (sessionData.teamsPlaying.has(match.home_team_id) || sessionData.teamsPlaying.has(match.away_team_id)) {
         sessionData.conflicts.push({
           matchId: match.id,
-          matchName: `${homeTeam?.name || 'Unknown'} vs ${awayTeam?.name || 'Unknown'}`,
+          matchName: `${match.home_team_name} vs ${match.away_team_name}`,
           conflictingTeams: [
-            sessionData.teamsPlaying.has(match.homeTeamId) ? homeTeam?.name : null,
-            sessionData.teamsPlaying.has(match.awayTeamId) ? awayTeam?.name : null
+            sessionData.teamsPlaying.has(match.home_team_id) ? match.home_team_name : null,
+            sessionData.teamsPlaying.has(match.away_team_id) ? match.away_team_name : null
           ].filter(Boolean)
         });
       }
       
-      sessionData.teamsPlaying.add(match.homeTeamId);
-      sessionData.teamsPlaying.add(match.awayTeamId);
+      sessionData.teamsPlaying.add(match.home_team_id);
+      sessionData.teamsPlaying.add(match.away_team_id);
     });
 
     // Calculate match statistics by status
@@ -784,7 +586,14 @@ const getTournamentSchedule = (req, res) => {
         hasConflicts: sessionAnalysis[session].conflicts.length > 0,
         conflicts: sessionAnalysis[session].conflicts,
         isValidSession: sessionAnalysis[session].conflicts.length === 0,
-        matches: sessionAnalysis[session].matches
+        matches: sessionAnalysis[session].matches.map(match => ({
+          id: match.id,
+          homeTeam: { id: match.home_team_id, name: match.home_team_name },
+          awayTeam: { id: match.away_team_id, name: match.away_team_name },
+          status: match.status,
+          matchDate: match.match_date,
+          matchName: match.match_name
+        }))
       })),
       hasScheduleConflicts: Object.values(sessionAnalysis).some(sa => sa.conflicts.length > 0),
       overallValidation: {
@@ -794,7 +603,7 @@ const getTournamentSchedule = (req, res) => {
         noTeamConflicts: Object.values(sessionAnalysis).every(sa => sa.conflicts.length === 0),
         completeRoundRobin: isCompleteRoundRobin
       },
-      sessions: tournamentSessions.sort((a, b) => a.sessionNumber - b.sessionNumber)
+      sessions: tournamentSessions.sort((a, b) => a.session_number - b.session_number)
     };
 
     res.json(summary);
@@ -804,251 +613,31 @@ const getTournamentSchedule = (req, res) => {
   }
 };
 
-// Clear Tournament Schedule
-const deleteTournamentSchedule = (req, res) => {
+const validateTournamentSchedule = async (req, res) => {
   try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
+    const tournamentResult = await query('SELECT * FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+    if (tournamentResult.rows.length === 0) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
 
-    const tournamentMatches = matches.filter(match => match.tournamentId === req.params.tournamentId);
-    const matchIds = tournamentMatches.map(match => match.id);
-
-    // Check if any matches have been played (have scores)
-    const hasScores = playerMatchScores.some(pms => matchIds.includes(pms.matchId)) ||
-                     teamMatchScores.some(tms => matchIds.includes(tms.matchId));
-
-    if (hasScores) {
-      return res.status(400).json({ 
-        error: 'Cannot clear schedule - some matches have recorded scores. Delete scores first.' 
-      });
-    }
-
-    // Remove all matches for this tournament
-    const removedMatchCount = tournamentMatches.length;
-    matches.splice(0, matches.length, ...matches.filter(match => match.tournamentId !== req.params.tournamentId));
-
-    // Remove auto-generated sessions
-    const autoGeneratedSessions = leagueSessions.filter(ls => 
-      ls.tournamentId === req.params.tournamentId && 
-      ls.notes && ls.notes.includes('Automatically generated')
+    // Get tournament matches
+    const matchesResult = await query(
+      'SELECT * FROM matches WHERE tournament_id = $1',
+      [req.params.tournamentId]
     );
-    
-    autoGeneratedSessions.forEach(session => {
-      const sessionIndex = findByIndex(leagueSessions, session.id);
-      if (sessionIndex !== -1) {
-        leagueSessions.splice(sessionIndex, 1);
-      }
-    });
+    const tournamentMatches = matchesResult.rows;
 
-    res.json({
-      message: 'Tournament schedule cleared successfully',
-      removedMatches: removedMatchCount,
-      removedSessions: autoGeneratedSessions.length
-    });
-  } catch (error) {
-    console.error('Error clearing schedule:', error);
-    res.status(500).json({ error: 'Failed to clear tournament schedule' });
-  }
-};
-
-// Get Matches by Round/Week
-const getRoundMatches = (req, res) => {
-  try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
-      return res.status(404).json({ error: 'Tournament not found' });
-    }
-
-    const sessionNumber = parseInt(req.params.sessionNumber);
-    const sessionMatches = matches.filter(match => 
-      match.tournamentId === req.params.tournamentId && 
-      match.sessionNumber === sessionNumber
+    // Get registered teams
+    const teamsResult = await query(
+      'SELECT team_id FROM tournament_teams WHERE tournament_id = $1 AND status = $2',
+      [req.params.tournamentId, 'registered']
     );
-
-    // Get registered teams count for validation
-    const registeredTeams = tournamentTeams.filter(tt => 
-      tt.tournamentId === req.params.tournamentId && tt.status === 'registered'
-    );
-
-    // Validate session: no team plays twice, all teams play (except bye)
-    const teamsInSession = new Set();
-    const conflicts = [];
-    
-    sessionMatches.forEach(match => {
-      if (teamsInSession.has(match.homeTeamId) || teamsInSession.has(match.awayTeamId)) {
-        const homeTeam = findById(teams, match.homeTeamId);
-        const awayTeam = findById(teams, match.awayTeamId);
-        conflicts.push({
-          matchId: match.id,
-          homeTeam: homeTeam?.name,
-          awayTeam: awayTeam?.name,
-          conflictingTeams: [
-            teamsInSession.has(match.homeTeamId) ? homeTeam?.name : null,
-            teamsInSession.has(match.awayTeamId) ? awayTeam?.name : null
-          ].filter(Boolean)
-        });
-      }
-      teamsInSession.add(match.homeTeamId);
-      teamsInSession.add(match.awayTeamId);
-    });
-
-    // Determine which team has bye (if any)
-    let byeTeam = null;
-    if (registeredTeams.length % 2 === 1) {
-      const allTeamIds = registeredTeams.map(tt => tt.teamId);
-      const playingTeamIds = Array.from(teamsInSession);
-      const byeTeamId = allTeamIds.find(id => !playingTeamIds.includes(id));
-      if (byeTeamId) {
-        byeTeam = findById(teams, byeTeamId);
-      }
-    }
-
-    // Enrich with team details
-    const enrichedMatches = sessionMatches.map(match => {
-      const homeTeam = findById(teams, match.homeTeamId);
-      const awayTeam = findById(teams, match.awayTeamId);
-      
-      return {
-        ...match,
-        homeTeamDetails: homeTeam,
-        awayTeamDetails: awayTeam
-      };
-    });
-
-    const expectedTeamsPlaying = registeredTeams.length % 2 === 0 ? registeredTeams.length : registeredTeams.length - 1;
-    const allTeamsPlaying = teamsInSession.size === expectedTeamsPlaying;
-
-    res.json({
-      tournamentId: req.params.tournamentId,
-      session: sessionNumber,
-      matchCount: enrichedMatches.length,
-      teamsPlaying: teamsInSession.size,
-      expectedTeamsPlaying,
-      allTeamsPlaying,
-      byeTeam: byeTeam ? { id: byeTeam.id, name: byeTeam.name } : null,
-      hasConflicts: conflicts.length > 0,
-      conflicts,
-      isValidSession: conflicts.length === 0 && allTeamsPlaying,
-      matches: enrichedMatches
-    });
-  } catch (error) {
-    console.error('Error getting session matches:', error);
-    res.status(500).json({ error: 'Failed to get session matches' });
-  }
-};
-
-const getTournamentSessionOverview = (req, res) => {
-  try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
-      return res.status(404).json({ error: 'Tournament not found' });
-    }
-
-    const tournamentMatches = matches.filter(match => match.tournamentId === req.params.tournamentId);
-    const tournamentSessions = leagueSessions.filter(ls => ls.tournamentId === req.params.tournamentId);
-    const registeredTeams = tournamentTeams.filter(tt => 
-      tt.tournamentId === req.params.tournamentId && tt.status === 'registered'
-    );
-
-    // Group matches by session
-    const sessionOverview = {};
-    tournamentMatches.forEach(match => {
-      const sessionNum = match.sessionNumber;
-      if (!sessionOverview[sessionNum]) {
-        sessionOverview[sessionNum] = {
-          sessionNumber: sessionNum,
-          matches: [],
-          teamsPlaying: new Set()
-        };
-      }
-      sessionOverview[sessionNum].matches.push(match);
-      sessionOverview[sessionNum].teamsPlaying.add(match.homeTeamId);
-      sessionOverview[sessionNum].teamsPlaying.add(match.awayTeamId);
-    });
-
-    // Add session details and calculate bye teams
-    const sessionDetails = Object.values(sessionOverview).map(session => {
-      const sessionData = tournamentSessions.find(s => s.sessionNumber === session.sessionNumber);
-      
-      // Find bye team if odd number of teams
-      let byeTeam = null;
-      if (registeredTeams.length % 2 === 1) {
-        const allTeamIds = registeredTeams.map(tt => tt.teamId);
-        const playingTeamIds = Array.from(session.teamsPlaying);
-        const byeTeamId = allTeamIds.find(id => !playingTeamIds.includes(id));
-        if (byeTeamId) {
-          byeTeam = findById(teams, byeTeamId);
-        }
-      }
-
-      const expectedTeamsPlaying = registeredTeams.length % 2 === 0 ? registeredTeams.length : registeredTeams.length - 1;
-      
-      return {
-        sessionNumber: session.sessionNumber,
-        sessionName: sessionData?.sessionName || `Session ${session.sessionNumber}`,
-        sessionDate: sessionData?.sessionDate || null,
-        status: sessionData?.status || 'scheduled',
-        matchCount: session.matches.length,
-        teamsPlaying: session.teamsPlaying.size,
-        expectedTeamsPlaying,
-        allTeamsPlaying: session.teamsPlaying.size === expectedTeamsPlaying,
-        byeTeam: byeTeam ? { id: byeTeam.id, name: byeTeam.name } : null,
-        isComplete: session.matches.every(m => m.status === 'completed'),
-        matches: session.matches.map(match => {
-          const homeTeam = findById(teams, match.homeTeamId);
-          const awayTeam = findById(teams, match.awayTeamId);
-          return {
-            id: match.id,
-            homeTeam: homeTeam ? { id: homeTeam.id, name: homeTeam.name } : null,
-            awayTeam: awayTeam ? { id: awayTeam.id, name: awayTeam.name } : null,
-            status: match.status,
-            matchDate: match.matchDate
-          };
-        })
-      };
-    });
-
-    // Sort by session number
-    sessionDetails.sort((a, b) => a.sessionNumber - b.sessionNumber);
-
-    const overview = {
-      tournamentId: req.params.tournamentId,
-      totalTeams: registeredTeams.length,
-      totalSessions: sessionDetails.length,
-      expectedSessions: registeredTeams.length - 1,
-      hasOddTeams: registeredTeams.length % 2 === 1,
-      teamsPerSession: registeredTeams.length % 2 === 0 ? registeredTeams.length : registeredTeams.length - 1,
-      matchesPerSession: Math.floor(registeredTeams.length / 2),
-      isCompleteSchedule: sessionDetails.length === (registeredTeams.length - 1) && 
-                         sessionDetails.every(s => s.allTeamsPlaying),
-      completedSessions: sessionDetails.filter(s => s.isComplete).length,
-      sessions: sessionDetails
-    };
-
-    res.json(overview);
-  } catch (error) {
-    console.error('Error getting sessions overview:', error);
-    res.status(500).json({ error: 'Failed to get sessions overview' });
-  }
-};
-
-const validateTournamentSchedule = (req, res) => {
-  try {
-    const tournament = findById(tournaments, req.params.tournamentId);
-    if (!tournament) {
-      return res.status(404).json({ error: 'Tournament not found' });
-    }
-
-    const tournamentMatches = matches.filter(match => match.tournamentId === req.params.tournamentId);
-    const registeredTeams = tournamentTeams.filter(tt => 
-      tt.tournamentId === req.params.tournamentId && tt.status === 'registered'
-    );
+    const registeredTeams = teamsResult.rows;
+    const totalTeams = registeredTeams.length;
 
     const validationResults = {
       tournamentId: req.params.tournamentId,
-      totalTeams: registeredTeams.length,
+      totalTeams,
       totalMatches: tournamentMatches.length,
       issues: [],
       warnings: [],
@@ -1056,17 +645,17 @@ const validateTournamentSchedule = (req, res) => {
     };
 
     // Validate basic requirements
-    if (registeredTeams.length < 2) {
+    if (totalTeams < 2) {
       validationResults.issues.push({
         type: 'INSUFFICIENT_TEAMS',
         message: 'Tournament needs at least 2 teams',
-        teams: registeredTeams.length
+        teams: totalTeams
       });
       validationResults.isValid = false;
     }
 
     // Validate match count for complete round robin
-    const expectedMatches = (registeredTeams.length * (registeredTeams.length - 1)) / 2;
+    const expectedMatches = (totalTeams * (totalTeams - 1)) / 2;
     if (tournamentMatches.length !== expectedMatches) {
       validationResults.issues.push({
         type: 'INCOMPLETE_ROUND_ROBIN',
@@ -1081,7 +670,7 @@ const validateTournamentSchedule = (req, res) => {
     // Validate session distribution
     const sessionGroups = {};
     tournamentMatches.forEach(match => {
-      const session = match.sessionNumber || 'unassigned';
+      const session = match.session_number || 'unassigned';
       if (!sessionGroups[session]) {
         sessionGroups[session] = {
           matches: [],
@@ -1089,11 +678,11 @@ const validateTournamentSchedule = (req, res) => {
         };
       }
       sessionGroups[session].matches.push(match);
-      sessionGroups[session].teams.add(match.homeTeamId);
-      sessionGroups[session].teams.add(match.awayTeamId);
+      sessionGroups[session].teams.add(match.home_team_id);
+      sessionGroups[session].teams.add(match.away_team_id);
     });
 
-    const expectedTeamsPerSession = registeredTeams.length % 2 === 0 ? registeredTeams.length : registeredTeams.length - 1;
+    const expectedTeamsPerSession = totalTeams % 2 === 0 ? totalTeams : totalTeams - 1;
     
     Object.keys(sessionGroups).forEach(sessionKey => {
       const session = sessionGroups[sessionKey];
@@ -1113,19 +702,20 @@ const validateTournamentSchedule = (req, res) => {
       // Check for team conflicts (team playing multiple matches in same session)
       const teamMatchCount = {};
       session.matches.forEach(match => {
-        teamMatchCount[match.homeTeamId] = (teamMatchCount[match.homeTeamId] || 0) + 1;
-        teamMatchCount[match.awayTeamId] = (teamMatchCount[match.awayTeamId] || 0) + 1;
+        teamMatchCount[match.home_team_id] = (teamMatchCount[match.home_team_id] || 0) + 1;
+        teamMatchCount[match.away_team_id] = (teamMatchCount[match.away_team_id] || 0) + 1;
       });
 
-      Object.keys(teamMatchCount).forEach(teamId => {
+      Object.keys(teamMatchCount).forEach(async (teamId) => {
         if (teamMatchCount[teamId] > 1) {
-          const team = findById(teams, teamId);
+          const teamResult = await query('SELECT name FROM teams WHERE id = $1', [teamId]);
+          const teamName = teamResult.rows[0]?.name || teamId;
           validationResults.issues.push({
             type: 'TEAM_CONFLICT',
-            message: `Team ${team?.name || teamId} plays ${teamMatchCount[teamId]} matches in session ${sessionKey}`,
+            message: `Team ${teamName} plays ${teamMatchCount[teamId]} matches in session ${sessionKey}`,
             session: sessionKey,
             teamId,
-            teamName: team?.name,
+            teamName,
             matchCount: teamMatchCount[teamId]
           });
           validationResults.isValid = false;
@@ -1137,15 +727,15 @@ const validateTournamentSchedule = (req, res) => {
     const allMatchups = new Set();
     const duplicateMatchups = [];
     
-    tournamentMatches.forEach(match => {
-      const matchup = [match.homeTeamId, match.awayTeamId].sort().join('-');
+    tournamentMatches.forEach(async (match) => {
+      const matchup = [match.home_team_id, match.away_team_id].sort().join('-');
       if (allMatchups.has(matchup)) {
-        const homeTeam = findById(teams, match.homeTeamId);
-        const awayTeam = findById(teams, match.awayTeamId);
+        const homeTeamResult = await query('SELECT name FROM teams WHERE id = $1', [match.home_team_id]);
+        const awayTeamResult = await query('SELECT name FROM teams WHERE id = $1', [match.away_team_id]);
         duplicateMatchups.push({
-          matchup: `${homeTeam?.name || 'Unknown'} vs ${awayTeam?.name || 'Unknown'}`,
-          homeTeamId: match.homeTeamId,
-          awayTeamId: match.awayTeamId
+          matchup: `${homeTeamResult.rows[0]?.name || 'Unknown'} vs ${awayTeamResult.rows[0]?.name || 'Unknown'}`,
+          homeTeamId: match.home_team_id,
+          awayTeamId: match.away_team_id
         });
       }
       allMatchups.add(matchup);
@@ -1160,40 +750,8 @@ const validateTournamentSchedule = (req, res) => {
       validationResults.isValid = false;
     }
 
-    // Check for missing matchups
-    const expectedMatchups = new Set();
-    for (let i = 0; i < registeredTeams.length; i++) {
-      for (let j = i + 1; j < registeredTeams.length; j++) {
-        const matchup = [registeredTeams[i].teamId, registeredTeams[j].teamId].sort().join('-');
-        expectedMatchups.add(matchup);
-      }
-    }
-
-    const missingMatchups = [];
-    expectedMatchups.forEach(expectedMatchup => {
-      if (!allMatchups.has(expectedMatchup)) {
-        const [teamId1, teamId2] = expectedMatchup.split('-');
-        const team1 = findById(teams, teamId1);
-        const team2 = findById(teams, teamId2);
-        missingMatchups.push({
-          matchup: `${team1?.name || 'Unknown'} vs ${team2?.name || 'Unknown'}`,
-          teamId1,
-          teamId2
-        });
-      }
-    });
-
-    if (missingMatchups.length > 0) {
-      validationResults.issues.push({
-        type: 'MISSING_MATCHUPS',
-        message: 'Missing matchups for complete round robin',
-        missing: missingMatchups
-      });
-      validationResults.isValid = false;
-    }
-
     // Add warnings for potential issues
-    const expectedSessions = registeredTeams.length - 1;
+    const expectedSessions = totalTeams - 1;
     const actualSessions = Object.keys(sessionGroups).filter(k => k !== 'unassigned').length;
     
     if (actualSessions !== expectedSessions) {
@@ -1220,47 +778,146 @@ const validateTournamentSchedule = (req, res) => {
   }
 };
 
+const getRoundMatches = async (req, res) => {
+  try {
+    const tournamentResult = await query('SELECT id FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+    if (tournamentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+
+    const sessionNumber = parseInt(req.params.sessionNumber);
+    
+    // Get matches for the specific session
+    const matchesResult = await query(
+      `SELECT m.*, ht.name as home_team_name, at.name as away_team_name, wt.name as winner_team_name
+       FROM matches m
+       JOIN teams ht ON m.home_team_id = ht.id
+       JOIN teams at ON m.away_team_id = at.id
+       LEFT JOIN teams wt ON m.winner_team_id = wt.id
+       WHERE m.tournament_id = $1 AND m.session_number = $2
+       ORDER BY m.created_at`,
+      [req.params.tournamentId, sessionNumber]
+    );
+    const sessionMatches = matchesResult.rows;
+
+    // Get registered teams count for validation
+    const teamsResult = await query(
+      'SELECT team_id FROM tournament_teams WHERE tournament_id = $1 AND status = $2',
+      [req.params.tournamentId, 'registered']
+    );
+    const registeredTeams = teamsResult.rows;
+
+    // Validate session: no team plays twice, all teams play (except bye)
+    const teamsInSession = new Set();
+    const conflicts = [];
+    
+    sessionMatches.forEach(match => {
+      if (teamsInSession.has(match.home_team_id) || teamsInSession.has(match.away_team_id)) {
+        conflicts.push({
+          matchId: match.id,
+          homeTeam: match.home_team_name,
+          awayTeam: match.away_team_name,
+          conflictingTeams: [
+            teamsInSession.has(match.home_team_id) ? match.home_team_name : null,
+            teamsInSession.has(match.away_team_id) ? match.away_team_name : null
+          ].filter(Boolean)
+        });
+      }
+      teamsInSession.add(match.home_team_id);
+      teamsInSession.add(match.away_team_id);
+    });
+
+    // Determine which team has bye (if any)
+    let byeTeam = null;
+    if (registeredTeams.length % 2 === 1) {
+      const allTeamIds = registeredTeams.map(t => t.team_id);
+      const playingTeamIds = Array.from(teamsInSession);
+      const byeTeamId = allTeamIds.find(id => !playingTeamIds.includes(id));
+      if (byeTeamId) {
+        const byeTeamResult = await query('SELECT id, name FROM teams WHERE id = $1', [byeTeamId]);
+        if (byeTeamResult.rows.length > 0) {
+          byeTeam = byeTeamResult.rows[0];
+        }
+      }
+    }
+
+    // Enrich matches with team details
+    const enrichedMatches = sessionMatches.map(match => ({
+      ...match,
+      homeTeamDetails: {
+        id: match.home_team_id,
+        name: match.home_team_name
+      },
+      awayTeamDetails: {
+        id: match.away_team_id,
+        name: match.away_team_name
+      }
+    }));
+
+    const expectedTeamsPlaying = registeredTeams.length % 2 === 0 ? registeredTeams.length : registeredTeams.length - 1;
+    const allTeamsPlaying = teamsInSession.size === expectedTeamsPlaying;
+
+    res.json({
+      tournamentId: req.params.tournamentId,
+      session: sessionNumber,
+      matchCount: enrichedMatches.length,
+      teamsPlaying: teamsInSession.size,
+      expectedTeamsPlaying,
+      allTeamsPlaying,
+      byeTeam: byeTeam ? { id: byeTeam.id, name: byeTeam.name } : null,
+      hasConflicts: conflicts.length > 0,
+      conflicts,
+      isValidSession: conflicts.length === 0 && allTeamsPlaying,
+      matches: enrichedMatches
+    });
+  } catch (error) {
+    console.error('Error getting session matches:', error);
+    res.status(500).json({ error: 'Failed to get session matches' });
+  }
+};
+
 const getAllMatchesForTournament = async (req, res) => {
   try {
-    const { tournamentId } = req.params;
-    
-    // You can implement this by:
-    // Option 1: Query matches directly if you have a tournamentId field in matches table
-    // Option 2: Get matches through sessions/league days
-    
-    // Option 1 example:
-    // const matches = await Match.findAll({
-    //   where: { tournamentId },
-    //   include: [
-    //     { model: Team, as: 'homeTeam' },
-    //     { model: Team, as: 'awayTeam' }
-    //   ],
-    //   order: [['sessionNumber', 'ASC'], ['matchDate', 'ASC']]
-    // });
-    
-    // Option 2 example (through sessions):
-    const sessions = await Session.findAll({
-      where: { tournamentId },
-      include: [{
-        model: Match,
-        include: [
-          { model: Team, as: 'homeTeam' },
-          { model: Team, as: 'awayTeam' }
-        ]
-      }],
-      order: [['sessionNumber', 'ASC']]
-    });
-    
-    // Flatten matches from all sessions
-    const matches = sessions.flatMap(session => 
-      session.matches.map(match => ({
-        ...match.toJSON(),
-        sessionNumber: session.sessionNumber,
-        sessionDate: session.sessionDate
-      }))
+    const tournamentResult = await query('SELECT id FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+    if (tournamentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+
+    const matchesResult = await query(
+      `SELECT m.*, ht.name as home_team_name, at.name as away_team_name, wt.name as winner_team_name,
+              ls.session_name, ls.session_date
+       FROM matches m
+       JOIN teams ht ON m.home_team_id = ht.id
+       JOIN teams at ON m.away_team_id = at.id
+       LEFT JOIN teams wt ON m.winner_team_id = wt.id
+       LEFT JOIN league_sessions ls ON m.session_id = ls.id
+       WHERE m.tournament_id = $1
+       ORDER BY m.session_number NULLS LAST, m.match_date NULLS LAST, m.created_at`,
+      [req.params.tournamentId]
     );
-    
-    res.json(matches);
+
+    const enrichedMatches = matchesResult.rows.map(match => ({
+      ...match,
+      homeTeamDetails: {
+        id: match.home_team_id,
+        name: match.home_team_name
+      },
+      awayTeamDetails: {
+        id: match.away_team_id,
+        name: match.away_team_name
+      },
+      winnerTeamDetails: match.winner_team_id ? {
+        id: match.winner_team_id,
+        name: match.winner_team_name
+      } : null,
+      sessionDetails: match.session_id ? {
+        id: match.session_id,
+        name: match.session_name,
+        date: match.session_date
+      } : null
+    }));
+
+    res.json(enrichedMatches);
   } catch (error) {
     console.error('Error fetching tournament matches:', error);
     res.status(500).json({ error: 'Failed to fetch tournament matches' });
@@ -1269,41 +926,266 @@ const getAllMatchesForTournament = async (req, res) => {
 
 const getSessionsForTournament = async (req, res) => {
   try {
-    const { tournamentId } = req.params;
-    
-    const sessions = await Session.findAll({
-      where: { tournamentId },
-      order: [['sessionNumber', 'ASC'], ['sessionDate', 'ASC']]
-    });
-    
-    res.json(sessions);
+    const tournamentResult = await query('SELECT id FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+    if (tournamentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+
+    // Get sessions with match counts
+    const sessionsResult = await query(
+      `SELECT ls.*, 
+              COUNT(m.id) as match_count,
+              COUNT(CASE WHEN m.status = 'completed' THEN 1 END) as completed_matches,
+              COUNT(CASE WHEN m.status = 'scheduled' THEN 1 END) as scheduled_matches,
+              COUNT(CASE WHEN m.status = 'in_progress' THEN 1 END) as in_progress_matches
+       FROM league_sessions ls
+       LEFT JOIN matches m ON ls.id = m.session_id
+       WHERE ls.tournament_id = $1
+       GROUP BY ls.id
+       ORDER BY ls.session_number`,
+      [req.params.tournamentId]
+    );
+
+    const enrichedSessions = sessionsResult.rows.map(session => ({
+      ...session,
+      match_count: parseInt(session.match_count),
+      completed_matches: parseInt(session.completed_matches),
+      scheduled_matches: parseInt(session.scheduled_matches),
+      in_progress_matches: parseInt(session.in_progress_matches),
+      is_complete: parseInt(session.match_count) > 0 && parseInt(session.completed_matches) === parseInt(session.match_count)
+    }));
+
+    res.json(enrichedSessions);
   } catch (error) {
     console.error('Error fetching tournament sessions:', error);
     res.status(500).json({ error: 'Failed to fetch tournament sessions' });
   }
 };
 
+const deleteTournamentSchedule = async (req, res) => {
+  try {
+    await withTransaction(async (client) => {
+      const tournamentResult = await client.query('SELECT id FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+      if (tournamentResult.rows.length === 0) {
+        throw new Error('Tournament not found');
+      }
+
+      // Get tournament matches
+      const matchesResult = await client.query(
+        'SELECT id FROM matches WHERE tournament_id = $1',
+        [req.params.tournamentId]
+      );
+      const matchIds = matchesResult.rows.map(row => row.id);
+
+      // Check if any matches have recorded scores
+      if (matchIds.length > 0) {
+        const scoresResult = await client.query(
+          'SELECT COUNT(*) FROM player_match_scores WHERE match_id = ANY($1)',
+          [matchIds]
+        );
+        
+        if (parseInt(scoresResult.rows[0].count) > 0) {
+          throw new Error('Cannot clear schedule - some matches have recorded scores. Delete scores first.');
+        }
+      }
+
+      // Remove all matches for this tournament
+      const removedMatchesResult = await client.query(
+        'DELETE FROM matches WHERE tournament_id = $1 RETURNING id',
+        [req.params.tournamentId]
+      );
+      const removedMatchCount = removedMatchesResult.rows.length;
+
+      // Remove auto-generated sessions (those with notes containing "Automatically generated")
+      const removedSessionsResult = await client.query(
+        `DELETE FROM league_sessions 
+         WHERE tournament_id = $1 AND notes LIKE '%Automatically generated%'
+         RETURNING id`,
+        [req.params.tournamentId]
+      );
+      const removedSessionCount = removedSessionsResult.rows.length;
+
+      res.json({
+        message: 'Tournament schedule cleared successfully',
+        removedMatches: removedMatchCount,
+        removedSessions: removedSessionCount
+      });
+    });
+  } catch (error) {
+    console.error('Error clearing schedule:', error);
+    if (['Tournament not found', 'Cannot clear schedule - some matches have recorded scores. Delete scores first.'].includes(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to clear tournament schedule' });
+  }
+};
+
+const generateMatches = async (req, res) => {
+  try {
+    const { startDate = null, daysBetweenSessions = 7, overrideTeamOrder = null, forceCreate = false } = req.body;
+
+    await withTransaction(async (client) => {
+      // Check if tournament exists
+      const tournamentResult = await client.query('SELECT * FROM tournaments WHERE id = $1', [req.params.tournamentId]);
+      if (tournamentResult.rows.length === 0) {
+        throw new Error('Tournament not found');
+      }
+      const tournament = tournamentResult.rows[0];
+
+      // Check if tournament already has matches
+      const existingMatchesResult = await client.query(
+        'SELECT COUNT(*) FROM matches WHERE tournament_id = $1',
+        [req.params.tournamentId]
+      );
+      if (parseInt(existingMatchesResult.rows[0].count) > 0) {
+        throw new Error('Tournament already has scheduled matches. Delete existing matches first.');
+      }
+
+      // Get registered teams
+      const teamsResult = await client.query(
+        `SELECT tt.team_id, t.name, tt.seed_number
+         FROM tournament_teams tt
+         JOIN teams t ON tt.team_id = t.id
+         WHERE tt.tournament_id = $1 AND tt.status = 'registered'
+         ORDER BY tt.seed_number NULLS LAST, t.name`,
+        [req.params.tournamentId]
+      );
+
+      if (teamsResult.rows.length < 2) {
+        throw new Error('At least 2 teams must be registered to generate round robin schedule');
+      }
+
+      let registeredTeams = teamsResult.rows.map(row => ({
+        id: row.team_id,
+        name: row.name,
+        seedNumber: row.seed_number
+      }));
+
+      // Generate round robin schedule
+      const schedule = generateRoundRobinSchedule(registeredTeams);
+      const sessionsRequired = schedule.length;
+
+      // Validate schedule
+      const validationIssues = validateRoundRobinSchedule(schedule, registeredTeams.length);
+
+      if (validationIssues.length > 0 && !forceCreate) {
+        return res.status(400).json({
+          error: 'Schedule validation failed. Use forceCreate=true to override.',
+          validationIssues,
+          schedule
+        });
+      }
+
+      // Calculate session dates
+      const baseDate = startDate ? new Date(startDate) : new Date(tournament.start_date);
+      const sessionDates = [];
+      for (let i = 0; i < sessionsRequired; i++) {
+        const sessionDate = new Date(baseDate);
+        sessionDate.setDate(baseDate.getDate() + (i * daysBetweenSessions));
+        sessionDates.push(sessionDate);
+      }
+
+      // Create sessions and matches
+      const createdMatches = [];
+      const createdSessions = [];
+
+      for (let sessionIndex = 0; sessionIndex < schedule.length; sessionIndex++) {
+        const session = schedule[sessionIndex];
+        const sessionDate = sessionDates[sessionIndex];
+
+        // Create session if it doesn't exist
+        const sessionResult = await client.query(
+          `INSERT INTO league_sessions (tournament_id, session_number, session_name, session_date, notes)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (tournament_id, session_number) DO UPDATE SET
+           session_date = EXCLUDED.session_date,
+           notes = EXCLUDED.notes
+           RETURNING *`,
+          [
+            req.params.tournamentId,
+            session.sessionNumber,
+            `Round Robin Session ${session.sessionNumber}`,
+            sessionDate,
+            `Automatically generated round robin session - ${session.matches.length} matches`
+          ]
+        );
+        
+        const sessionRecord = sessionResult.rows[0];
+        createdSessions.push(sessionRecord);
+
+        // Create matches for this session
+        for (let matchIndex = 0; matchIndex < session.matches.length; matchIndex++) {
+          const match = session.matches[matchIndex];
+          
+          const matchResult = await client.query(
+            `INSERT INTO matches (tournament_id, home_team_id, away_team_id, session_id, session_number, match_date, match_name)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING *`,
+            [
+              req.params.tournamentId,
+              match.homeTeam.id,
+              match.awayTeam.id,
+              sessionRecord.id,
+              session.sessionNumber,
+              sessionDate,
+              `Session ${session.sessionNumber} - ${match.homeTeam.name} vs ${match.awayTeam.name}`
+            ]
+          );
+          
+          createdMatches.push(matchResult.rows[0]);
+        }
+      }
+
+      // Update tournament sessions count if needed
+      if (tournament.total_sessions < sessionsRequired) {
+        await client.query(
+          'UPDATE tournaments SET total_sessions = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          [sessionsRequired, req.params.tournamentId]
+        );
+      }
+
+      const result = {
+        tournamentId: req.params.tournamentId,
+        totalMatchesCreated: createdMatches.length,
+        totalSessionsCreated: createdSessions.length,
+        totalTeams: registeredTeams.length,
+        sessionsRequired,
+        validationIssues,
+        wasForced: validationIssues.length > 0 && forceCreate,
+        schedule,
+        createdMatches,
+        createdSessions
+      };
+
+      res.status(201).json(result);
+    });
+  } catch (error) {
+    console.error('Error creating round robin matches:', error);
+    if (['Tournament not found', 'Tournament already has scheduled matches. Delete existing matches first.', 'At least 2 teams must be registered to generate round robin schedule'].includes(error.message)) {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to create round robin schedule' });
+  }
+};
+
 module.exports = {
+  createTournament,
+  getAllTournaments,
+  getTournamentById,
+  updateTournament,
+  deleteTournament,
   registerTeamToTournament,
+  getRegisteredTeamsInTournament,
   registerPlayerToTeamInTournament,
   getRegisteredPlayersInRegisteredTeamInTournament,
   registerSessionToTournament,
   getRegisteredSessionsInTournament,
-  createTournament,
-  deleteTournament,
-  getAllTournaments,
-  getRegisteredTeamsInTournament,
-  getTournamentById,
+  previewMatchMaking,
+  generateMatches,
   getTournamentSchedule,
   deleteTournamentSchedule,
-  getTournamentPlayersStatistics,
-  getTournamentTeamsStatistics,
-  getTournamentSessionOverview,
   validateTournamentSchedule,
   getRoundMatches,
   getAllMatchesForTournament,
-  previewMatchMaking,
-  generateMatches,
-  updateTournament,
   getSessionsForTournament
 };

@@ -5,7 +5,7 @@ const { Pool } = require('pg');
 const dbConfig = {
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'bowling_tournament',
+  database: process.env.DB_NAME || 'bowling-tournament',
   password: process.env.DB_PASSWORD || 'password',
   port: process.env.DB_PORT || 5432,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,

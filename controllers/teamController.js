@@ -1,8 +1,7 @@
-const { v4: uuidv4 } = require('uuid');
-const { tournaments, teams } = require('../models');
-const { findById, findByIndex } = require('../utils/helpers');
+// controllers/teamController.js
+const { query, withTransaction } = require('../config/database');
 
-const createTeam = (req, res) => {
+const createTeam = async (req, res) => {
   try {
     const { name, captainName, captainEmail, captainPhone } = req.body;
     
@@ -10,101 +9,175 @@ const createTeam = (req, res) => {
       return res.status(400).json({ error: 'Team name, captain name, and captain email are required' });
     }
 
-    // Check if team name already exists
-    const existingTeam = teams.find(team => team.name === name);
-    if (existingTeam) {
-      return res.status(400).json({ error: 'Team name already exists' });
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(captainEmail)) {
+      return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    const team = {
-      id: uuidv4(),
-      name,
-      captainName,
-      captainEmail,
-      captainPhone: captainPhone || null,
-      status: 'active',
-      registrationDate: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    const result = await query(
+      `INSERT INTO teams (name, captain_name, captain_email, captain_phone)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [name, captainName, captainEmail, captainPhone || null]
+    );
 
-    teams.push(team);
-    res.status(201).json(team);
+    res.status(201).json(result.rows[0]);
   } catch (error) {
+    console.error('Error creating team:', error);
+    
+    // Handle unique constraint violations
+    if (error.code === '23505') {
+      if (error.constraint === 'teams_name_key') {
+        return res.status(400).json({ error: 'Team name already exists' });
+      }
+    }
+    
     res.status(500).json({ error: 'Failed to create team' });
   }
 };
 
-const getTeams = (req, res) => {
-  res.json(teams);
-}
-
-const getTeamById = (req, res) => {
-  const team = findById(teams, req.params.id);
-  if (!team) {
-    return res.status(404).json({ error: 'Team not found' });
-  }
-  res.json(team);
-};
-
-const updateTeam = (req, res) => {
-  const index = findByIndex(teams, req.params.id);
-  if (index === -1) {
-    return res.status(404).json({ error: 'Team not found' });
-  }
-
-  const { name, captainName, captainEmail, captainPhone, status } = req.body;
-  const team = teams[index];
-
-  teams[index] = {
-    ...team,
-    name: name || team.name,
-    captainName: captainName || team.captainName,
-    captainEmail: captainEmail || team.captainEmail,
-    captainPhone: captainPhone !== undefined ? captainPhone : team.captainPhone,
-    status: status || team.status
-  };
-
-  res.json(teams[index]);
-};
-
-const deleteTeam = (req, res) => {
+const getTeams = async (req, res) => {
   try {
-    const teamIndex = findByIndex(teams, req.params.id);
-    if (teamIndex === -1) {
+    const result = await query('SELECT * FROM teams ORDER BY name');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching teams:', error);
+    res.status(500).json({ error: 'Failed to fetch teams' });
+  }
+};
+
+const getTeamById = async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM teams WHERE id = $1', [req.params.id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching team:', error);
+    res.status(500).json({ error: 'Failed to fetch team' });
+  }
+};
+
+const updateTeam = async (req, res) => {
+  try {
+    const { name, captainName, captainEmail, captainPhone, status } = req.body;
+
+    // Validate email format if provided
+    if (captainEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(captainEmail)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+    }
+
+    // Validate status if provided
+    if (status && !['active', 'inactive', 'withdrawn'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid team status' });
+    }
+
+    const updateFields = [];
+    const updateValues = [];
+    let paramCounter = 1;
+
+    if (name !== undefined) {
+      updateFields.push(`name = $${paramCounter++}`);
+      updateValues.push(name);
+    }
+    if (captainName !== undefined) {
+      updateFields.push(`captain_name = $${paramCounter++}`);
+      updateValues.push(captainName);
+    }
+    if (captainEmail !== undefined) {
+      updateFields.push(`captain_email = $${paramCounter++}`);
+      updateValues.push(captainEmail);
+    }
+    if (captainPhone !== undefined) {
+      updateFields.push(`captain_phone = $${paramCounter++}`);
+      updateValues.push(captainPhone);
+    }
+    if (status !== undefined) {
+      updateFields.push(`status = $${paramCounter++}`);
+      updateValues.push(status);
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
+    updateValues.push(req.params.id);
+
+    const result = await query(
+      `UPDATE teams SET ${updateFields.join(', ')} WHERE id = ${paramCounter} RETURNING *`,
+      updateValues
+    );
+
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Team not found' });
     }
 
-    const teamId = req.params.id;
-
-    // Check if team is part of any active tournaments
-    const activeRegistrations = tournamentTeams.filter(tt => tt.teamId === teamId);
-    if (activeRegistrations.length > 0) {
-      return res.status(400).json({ 
-        error: 'Cannot delete team that is registered in tournaments. Please withdraw from tournaments first.' 
-      });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating team:', error);
+    
+    // Handle unique constraint violations
+    if (error.code === '23505') {
+      if (error.constraint === 'teams_name_key') {
+        return res.status(400).json({ error: 'Team name already exists' });
+      }
     }
+    
+    res.status(500).json({ error: 'Failed to update team' });
+  }
+};
 
-    // Remove related data
-    teamPlayers.splice(0, teamPlayers.length, ...teamPlayers.filter(tp => tp.teamId !== teamId));
-    playerMatchScores.splice(0, playerMatchScores.length, ...playerMatchScores.filter(pms => pms.teamId !== teamId));
-    teamMatchScores.splice(0, teamMatchScores.length, ...teamMatchScores.filter(tms => tms.teamId !== teamId));
-    playerStatistics.splice(0, playerStatistics.length, ...playerStatistics.filter(ps => ps.teamId !== teamId));
-    teamStatistics.splice(0, teamStatistics.length, ...teamStatistics.filter(ts => ts.teamId !== teamId));
+const deleteTeam = async (req, res) => {
+  try {
+    await withTransaction(async (client) => {
+      // Check if team exists
+      const teamResult = await client.query('SELECT id FROM teams WHERE id = $1', [req.params.id]);
+      if (teamResult.rows.length === 0) {
+        throw new Error('Team not found');
+      }
 
-    // Remove the team
-    teams.splice(teamIndex, 1);
+      // Check if team is registered in any tournaments
+      const tournamentResult = await client.query(
+        'SELECT COUNT(*) FROM tournament_teams WHERE team_id = $1',
+        [req.params.id]
+      );
+      
+      if (parseInt(tournamentResult.rows[0].count) > 0) {
+        throw new Error('Cannot delete team that is registered in tournaments. Please withdraw from tournaments first.');
+      }
+
+      // Delete the team (cascade will handle related records)
+      await client.query('DELETE FROM teams WHERE id = $1', [req.params.id]);
+    });
 
     res.status(204).send();
   } catch (error) {
+    console.error('Error deleting team:', error);
+    
+    if (error.message === 'Team not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    
+    if (error.message.includes('Cannot delete team that is registered in tournaments')) {
+      return res.status(400).json({ error: error.message });
+    }
+    
     res.status(500).json({ error: 'Failed to delete team' });
   }
-}
+};
 
 module.exports = {
   createTeam,
-  getTeamById,
   getTeams,
+  getTeamById,
   updateTeam,
   deleteTeam
 };

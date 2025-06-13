@@ -11,8 +11,6 @@ const {
   getAllTournaments,
   getRegisteredTeamsInTournament,
   getTournamentById,
-  getTournamentPlayersStatistics,
-  getTournamentTeamsStatistics,
   getTournamentSchedule,
   deleteTournamentSchedule,
   validateTournamentSchedule,
@@ -23,8 +21,7 @@ const {
   getAllMatchesForTournament,
   getSessionsForTournament
 } = require('../controllers/tournamentController');
-const { getLeagueDaysByTournament, createLeagueDay } = require('../controllers/leagueDayController');
-const { getStandings, getStatistics, getPlayerTournamentStatistics, getTeamTournamentStatistics } = require('../controllers/statisticsController');
+const { getStandings, getStatistics, getPlayerTournamentStatistics, getTeamTournamentStatistics, getTournamentPlayersStatistics, getTournamentTeamsStatistics } = require('../controllers/statisticsController');
 
 // Tournament CRUD
 router.post('/', createTournament);
@@ -56,8 +53,7 @@ router.get('/:tournamentId/team-statistics', getTournamentTeamsStatistics);
 router.get('/:tournamentId/schedule/round-robin/preview', previewMatchMaking);
 router.post('/:tournamentId/schedule/round-robin', generateMatches);
 router.get('/:tournamentId/schedule/summary', getTournamentSchedule);
-router.delete('/:tournamentId/schedule', deleteTournamentSchedule);;
-//router.get('/:tournamentId/sessions/:sessionNumber/matches', validateSessionsInTournament);
+router.delete('/:tournamentId/schedule', deleteTournamentSchedule);
 router.get('/:tournamentId/schedule/validate', validateTournamentSchedule);
 router.get('/:tournamentId/sessions/:sessionNumber/matches', getRoundMatches);
 
