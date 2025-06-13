@@ -1220,6 +1220,69 @@ const validateTournamentSchedule = (req, res) => {
   }
 };
 
+const getAllMatchesForTournament = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    
+    // You can implement this by:
+    // Option 1: Query matches directly if you have a tournamentId field in matches table
+    // Option 2: Get matches through sessions/league days
+    
+    // Option 1 example:
+    // const matches = await Match.findAll({
+    //   where: { tournamentId },
+    //   include: [
+    //     { model: Team, as: 'homeTeam' },
+    //     { model: Team, as: 'awayTeam' }
+    //   ],
+    //   order: [['sessionNumber', 'ASC'], ['matchDate', 'ASC']]
+    // });
+    
+    // Option 2 example (through sessions):
+    const sessions = await Session.findAll({
+      where: { tournamentId },
+      include: [{
+        model: Match,
+        include: [
+          { model: Team, as: 'homeTeam' },
+          { model: Team, as: 'awayTeam' }
+        ]
+      }],
+      order: [['sessionNumber', 'ASC']]
+    });
+    
+    // Flatten matches from all sessions
+    const matches = sessions.flatMap(session => 
+      session.matches.map(match => ({
+        ...match.toJSON(),
+        sessionNumber: session.sessionNumber,
+        sessionDate: session.sessionDate
+      }))
+    );
+    
+    res.json(matches);
+  } catch (error) {
+    console.error('Error fetching tournament matches:', error);
+    res.status(500).json({ error: 'Failed to fetch tournament matches' });
+  }
+};
+
+const getSessionsForTournament = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    
+    const sessions = await Session.findAll({
+      where: { tournamentId },
+      order: [['sessionNumber', 'ASC'], ['sessionDate', 'ASC']]
+    });
+    
+    res.json(sessions);
+  } catch (error) {
+    console.error('Error fetching tournament sessions:', error);
+    res.status(500).json({ error: 'Failed to fetch tournament sessions' });
+  }
+};
+
 module.exports = {
   registerTeamToTournament,
   registerPlayerToTeamInTournament,
@@ -1238,7 +1301,9 @@ module.exports = {
   getTournamentSessionOverview,
   validateTournamentSchedule,
   getRoundMatches,
+  getAllMatchesForTournament,
   previewMatchMaking,
   generateMatches,
-  updateTournament
+  updateTournament,
+  getSessionsForTournament
 };

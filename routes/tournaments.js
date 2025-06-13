@@ -19,7 +19,9 @@ const {
   getRoundMatches,
   previewMatchMaking,
   generateMatches,
-  updateTournament
+  updateTournament,
+  getAllMatchesForTournament,
+  getSessionsForTournament
 } = require('../controllers/tournamentController');
 const { getLeagueDaysByTournament, createLeagueDay } = require('../controllers/leagueDayController');
 const { getStandings, getStatistics, getPlayerTournamentStatistics, getTeamTournamentStatistics } = require('../controllers/statisticsController');
@@ -58,5 +60,9 @@ router.delete('/:tournamentId/schedule', deleteTournamentSchedule);;
 //router.get('/:tournamentId/sessions/:sessionNumber/matches', validateSessionsInTournament);
 router.get('/:tournamentId/schedule/validate', validateTournamentSchedule);
 router.get('/:tournamentId/sessions/:sessionNumber/matches', getRoundMatches);
+
+router.get('/:tournamentId/matches', getAllMatchesForTournament);
+router.get('/:tournamentId/sessions', getSessionsForTournament);
+
 
 module.exports = router;

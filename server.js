@@ -1,20 +1,18 @@
+// server.js - Fixed version with correct route mounting
+
 const express = require('express');
 const cors = require('cors');
 const tournamentRoutes = require('./routes/tournaments');
 const teamRoutes = require('./routes/teams');
 const playerRoutes = require('./routes/players');
 const sessionRoutes = require('./routes/sessions');
-//const leagueDayRoutes = require('./routes/leagueDays');
 const matchRoutes = require('./routes/matches');
 const playerStatisticsRoutes = require('./routes/playerStatistics');
 const teamStatisticsRoutes = require('./routes/teamStatistics');
-// const scoreRoutes = require('./routes/scores');
-// const statisticsRoutes = require('./routes/statistics');
 
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { auth } = require('express-oauth2-jwt-bearer');
 const fs = require("fs")
-//import { parse } from 'yaml'
 const yaml = require('yaml');
 const swaggerUi = require('swagger-ui-express');
 
@@ -44,19 +42,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Routes
+// Routes - FIXED: Added missing forward slashes
 // enforce on all endpoints
 //app.use(jwtCheck);
 app.use('/api/tournaments', tournamentRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/players', playerRoutes);
-app.use('api/sessions', sessionRoutes);
-app.use('api/matches', matchRoutes);
-app.use('api/player-statistics', playerStatisticsRoutes);
-app.use('api/team-statistics', teamStatisticsRoutes);
-//app.use('/api/league-days', leagueDayRoutes);
-// app.use('/api/scores', scoreRoutes);
-// app.use('/api/statistics', statisticsRoutes);
+app.use('/api/sessions', sessionRoutes);  // FIXED: was 'api/sessions'
+app.use('/api/matches', matchRoutes);     // FIXED: was 'api/matches'
+app.use('/api/player-statistics', playerStatisticsRoutes); // FIXED: was 'api/player-statistics'
+app.use('/api/team-statistics', teamStatisticsRoutes);     // FIXED: was 'api/team-statistics'
 
 // Error handling
 app.use(errorHandler);
@@ -66,6 +61,7 @@ app.use(notFoundHandler);
 app.listen(PORT, () => {
   console.log(`Bowling Tournament API running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`API Documentation: http://localhost:${PORT}/api-docs`);
 });
 
 module.exports = app;

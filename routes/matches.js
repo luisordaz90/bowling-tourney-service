@@ -6,7 +6,8 @@ const {
     addTeamScoreInMatch,
     getTeamsScoreInMatch,
     getMatchById,
-    updateMatchStatus
+    updateMatchStatus,
+    calculateTeamScoreInMatch
 } = require('../controllers/matchesController');
 
 router.get('/:id', getMatchById);
@@ -17,5 +18,7 @@ router.get('/:id/player-scores', getPlayersMatchScore);
 
 router.post('/:id/team-scores', addTeamScoreInMatch);
 router.get('/:id/team-scores', getTeamsScoreInMatch);
+
+router.post('/:id/team-scores/calculate', calculateTeamScoreInMatch);
 
 module.exports = router;

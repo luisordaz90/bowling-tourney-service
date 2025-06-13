@@ -147,11 +147,62 @@ const getTeamsScoreInMatch = (req, res) => {
   res.json(matchTeamScores);
 };
 
+const calculateTeamScoreInMatch = async (req, res) => {
+  try {
+    const { id: matchId } = req.params;
+    const { teamId } = req.body;
+    
+    // Get all player scores for this team in this match
+    const playerScores = await PlayerMatchScore.findAll({
+      where: { 
+        matchId,
+        teamId 
+      }
+    });
+    
+    if (playerScores.length === 0) {
+      return res.status(400).json({ error: 'No player scores found for this team' });
+    }
+    
+    // Calculate team totals
+    const totalScore = playerScores.reduce((sum, score) => sum + score.finalScore, 0);
+    const teamAverage = totalScore / playerScores.length;
+    
+    // Update or create team score record
+    const [teamScore, created] = await TeamMatchScore.findOrCreate({
+      where: { matchId, teamId },
+      defaults: {
+        matchId,
+        teamId,
+        finalTeamScore: totalScore,
+        teamAverage: Math.round(teamAverage * 100) / 100, // Round to 2 decimal places
+        totalPins: totalScore,
+        gamesPlayed: playerScores.length * 3 // Assuming 3 games per player
+      }
+    });
+    
+    if (!created) {
+      await teamScore.update({
+        finalTeamScore: totalScore,
+        teamAverage: Math.round(teamAverage * 100) / 100,
+        totalPins: totalScore,
+        gamesPlayed: playerScores.length * 3
+      });
+    }
+    
+    res.json(teamScore);
+  } catch (error) {
+    console.error('Error calculating team score:', error);
+    res.status(500).json({ error: 'Failed to calculate team score' });
+  }
+};
+
 module.exports = {
     addPlayerScoreInMatch,
     getPlayersMatchScore,
     addTeamScoreInMatch,
     getTeamsScoreInMatch,
     getMatchById,
-    updateMatchStatus
+    updateMatchStatus,
+    calculateTeamScoreInMatch
 };
