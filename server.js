@@ -11,6 +11,8 @@ const { auth } = require('express-oauth2-jwt-bearer');
 
 // Import database configuration
 const { pool, closePool } = require('./config/database');
+const { toCamelCase } = require('./utils/helpers');
+
 
 // Import routes
 const tournamentRoutes = require('./routes/tournaments');
@@ -20,6 +22,7 @@ const sessionRoutes = require('./routes/sessions');
 const matchRoutes = require('./routes/matches');
 const playerStatisticsRoutes = require('./routes/playerStatistics');
 const teamStatisticsRoutes = require('./routes/teamStatistics');
+const leagueRoutes = require('./routes/leagues');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
@@ -51,6 +54,27 @@ try {
   console.warn('Could not load Swagger documentation:', error.message);
 }
 
+
+
+// Middleware to modify the response body
+const outputFormatter = (req, res, next) => {
+    const originalJson = res.json;
+    res.json = function (body) {
+        console.log('Response body:', body);
+        originalJson.call(this, toCamelCase(body));
+    }
+    next();
+};
+
+// API Routes
+// Uncomment the line below to enforce JWT authentication on all endpoints
+// app.use('/api', jwtCheck);
+app.use((req, res, next) => {
+    const { method, url, headers } = req;
+    console.log(`${method} -> ${url} with headers: ${JSON.stringify(headers)}` );
+    next();
+});
+
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
@@ -81,17 +105,16 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// API Routes
-// Uncomment the line below to enforce JWT authentication on all endpoints
-// app.use('/api', jwtCheck);
-
 app.use('/api/tournaments', tournamentRoutes);
-app.use('/api/teams', teamRoutes);
-app.use('/api/players', playerRoutes);
-app.use('/api/sessions', sessionRoutes);
-app.use('/api/matches', matchRoutes);
-app.use('/api/player-statistics', playerStatisticsRoutes);
-app.use('/api/team-statistics', teamStatisticsRoutes);
+app.use('/api/teams',outputFormatter, teamRoutes);
+app.use('/api/players', outputFormatter, playerRoutes);
+app.use('/api/sessions', outputFormatter, sessionRoutes);
+app.use('/api/matches', outputFormatter, matchRoutes);
+app.use('/api/player-statistics', outputFormatter, playerStatisticsRoutes);
+app.use('/api/team-statistics', outputFormatter, teamStatisticsRoutes);
+app.use('/api/leagues', outputFormatter, leagueRoutes);
+
+
 
 // Error handling middleware
 app.use(errorHandler);

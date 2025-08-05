@@ -9,6 +9,7 @@ const {
   getPlayerTeams,
   getPlayerStatistics
 } = require('../controllers/playerController');
+const { getPlayerLeagueHistory } = require('../controllers/leagueController');
 
 router.post('/', createPlayer);
 router.get('/', getPlayers);
@@ -19,5 +20,6 @@ router.delete('/:id', deletePlayer);
 router.get('/:playerId/dashboard', getPlayerDashboard);
 router.get('/:playerId/teams', getPlayerTeams);
 router.get('/:playerId/statistics', getPlayerStatistics);
+router.get('/:playerId/league-history', getPlayerLeagueHistory);
 
 module.exports = router;
