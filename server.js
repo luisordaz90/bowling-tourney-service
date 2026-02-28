@@ -26,6 +26,8 @@ const leagueRoutes = require('./routes/leagues');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const requestLogger = require('./middleware/requestLogger');
+const logger = require('./config/logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,14 +46,17 @@ app.use(cors({
   credentials: true
 }));
 
+// Request logging middleware
+app.use(requestLogger);
+
 // Swagger documentation
 try {
   const file = fs.readFileSync('./bowling_api_oas.yaml', 'utf8');
   const swaggerDocument = yaml.parse(file);
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-  console.log('Swagger documentation available at /api-docs');
+  logger.info('Swagger documentation available at /api-docs');
 } catch (error) {
-  console.warn('Could not load Swagger documentation:', error.message);
+  logger.warn('Could not load Swagger documentation:', error.message);
 }
 
 
@@ -60,7 +65,6 @@ try {
 const outputFormatter = (req, res, next) => {
     const originalJson = res.json;
     res.json = function (body) {
-        console.log('Response body:', body);
         originalJson.call(this, toCamelCase(body));
     }
     next();
@@ -69,11 +73,6 @@ const outputFormatter = (req, res, next) => {
 // API Routes
 // Uncomment the line below to enforce JWT authentication on all endpoints
 // app.use('/api', jwtCheck);
-app.use((req, res, next) => {
-    const { method, url, headers } = req;
-    console.log(`${method} -> ${url} with headers: ${JSON.stringify(headers)}` );
-    next();
-});
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
@@ -95,7 +94,7 @@ app.get('/api/health', async (req, res) => {
       version: process.env.npm_package_version || '1.0.0'
     });
   } catch (error) {
-    console.error('Health check failed:', error);
+    logger.error('Health check failed:', error);
     res.status(503).json({
       status: 'ERROR',
       timestamp: new Date(),
@@ -122,13 +121,13 @@ app.use(notFoundHandler);
 
 // Graceful shutdown
 const gracefulShutdown = async () => {
-  console.log('Received shutdown signal, closing HTTP server...');
+  logger.info('Received shutdown signal, closing HTTP server...');
   
   try {
     await closePool();
-    console.log('Database connections closed.');
+    logger.info('Database connections closed.');
   } catch (error) {
-    console.error('Error during shutdown:', error);
+    logger.error('Error during shutdown:', error);
   }
   
   process.exit(0);
@@ -139,19 +138,21 @@ process.on('SIGINT', gracefulShutdown);
 
 // Start server
 const server = app.listen(PORT, () => {
-  console.log(`🎳 Bowling Tournament API running on port ${PORT}`);
-  console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
-  console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info({
+    port: PORT,
+    environment: process.env.NODE_ENV || 'development',
+    apiDocs: `http://localhost:${PORT}/api-docs`,
+    healthCheck: `http://localhost:${PORT}/api/health`
+  }, `🎳 Bowling Tournament API running on port ${PORT}`);
   
   // Test database connection on startup
   pool.query('SELECT NOW() as connection_time')
     .then(result => {
-      console.log(`🗄️  Database connected at: ${result.rows[0].connection_time}`);
+      logger.info(`🗄️  Database connected at: ${result.rows[0].connection_time}`);
     })
     .catch(error => {
-      console.error('❌ Database connection failed:', error.message);
-      console.error('Please check your database configuration in .env file');
+      logger.error('❌ Database connection failed:', error.message);
+      logger.error('Please check your database configuration in .env file');
     });
 });
 

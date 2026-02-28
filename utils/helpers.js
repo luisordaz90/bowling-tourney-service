@@ -160,11 +160,28 @@ const validateRoundRobinSchedule = (schedule, totalTeams) => {
   return issues;
 };
 
+// Helper function to convert snake_case to camelCase
+const toCamelCase = (obj) => {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(toCamelCase);
+  if (obj instanceof Date) return obj;
+  if (typeof obj !== 'object') return obj;
+
+  const camelCaseObj = {};
+  Object.keys(obj).forEach(key => {
+    const camelKey = key.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase());
+    camelCaseObj[camelKey] = toCamelCase(obj[key]);
+  });
+  return camelCaseObj;
+  
+};
+
 module.exports = {
   generateRoundRobinSchedule,
   validateRoundRobinSchedule,
   findById,
   findByIndex,
   validateScore,
-  validateEmail
+  validateEmail,
+  toCamelCase
 };

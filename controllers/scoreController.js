@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const { leagueDays, teams, players, scores } = require('../models');
 const { findById, findByIndex, validateScore } = require('../utils/helpers');
+const logger = require('../config/logger');
 
 const createScore = (req, res) => {
   try {
@@ -58,15 +59,16 @@ const createScore = (req, res) => {
       team.totalScore += finalScore;
     }
 
-    res.status(201).json(score);
+    res.status(201).json((score));
   } catch (error) {
+    logger.error('Error recording score:', error);
     res.status(500).json({ error: 'Failed to record score' });
   }
 };
 
 const getScoresByLeagueDay = (req, res) => {
   const leagueDayScores = scores.filter(score => score.leagueDayId === req.params.leagueDayId);
-  res.json(leagueDayScores);
+  res.json((leagueDayScores));
 };
 
 const getScoresByTeam = (req, res) => {
@@ -77,12 +79,12 @@ const getScoresByTeam = (req, res) => {
     teamScores = teamScores.filter(score => score.leagueDayId === leagueDayId);
   }
   
-  res.json(teamScores);
+  res.json((teamScores));
 };
 
 const getScoresByPlayer = (req, res) => {
   const playerScores = scores.filter(score => score.playerId === req.params.playerId);
-  res.json(playerScores);
+  res.json((playerScores));
 };
 
 module.exports = {
