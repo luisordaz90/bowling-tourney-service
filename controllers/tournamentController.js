@@ -1,10 +1,10 @@
 // controllers/tournamentController.js
 const { query, withTransaction } = require('../config/database');
-const { generateRoundRobinSchedule, validateRoundRobinSchedule } = require('../utils/helpers');
+const { generateRoundRobinSchedule, validateRoundRobinSchedule, toCamelCase } = require('../utils/helpers');
 
 const createTournament = async (req, res) => {
   try {
-    const { name, description, startDate, endDate, maxTeams, totalSessions, sessionType } = req.body;
+    const { name, description, startDate, endDate, maxTeams, totalSessions, sessionType, leagueId, editionId } = req.body;
     
     if (!name || !startDate || !endDate || !maxTeams || !totalSessions || !sessionType) {
       return res.status(400).json({ 
@@ -12,14 +12,33 @@ const createTournament = async (req, res) => {
       });
     }
 
+    // Validate league and edition if provided
+    if (leagueId) {
+      const leagueResult = await query('SELECT id FROM leagues WHERE id = $1', [leagueId]);
+      if (leagueResult.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid league ID' });
+      }
+    }
+    
+    if (editionId) {
+      const editionResult = await query('SELECT id, league_id FROM tournament_editions WHERE id = $1', [editionId]);
+      if (editionResult.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid edition ID' });
+      }
+      // If both leagueId and editionId are provided, ensure they match
+      if (leagueId && editionResult.rows[0].league_id !== leagueId) {
+        return res.status(400).json({ error: 'Edition does not belong to the specified league' });
+      }
+    }
+
     const result = await query(
-      `INSERT INTO tournaments (name, description, start_date, end_date, max_teams, total_sessions, session_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO tournaments (name, description, start_date, end_date, max_teams, total_sessions, session_type, league_id, edition_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [name, description, new Date(startDate), new Date(endDate), parseInt(maxTeams), parseInt(totalSessions), sessionType]
+      [name, description, new Date(startDate), new Date(endDate), parseInt(maxTeams), parseInt(totalSessions), sessionType, leagueId || null, editionId || null]
     );
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(toCamelCase(result.rows[0]));
   } catch (error) {
     console.error('Error creating tournament:', error);
     res.status(500).json({ error: 'Failed to create tournament' });
@@ -29,7 +48,7 @@ const createTournament = async (req, res) => {
 const getAllTournaments = async (req, res) => {
   try {
     const result = await query('SELECT * FROM tournaments ORDER BY created_at DESC');
-    res.json(result.rows);
+    res.json(toCamelCase(result.rows));
   } catch (error) {
     console.error('Error fetching tournaments:', error);
     res.status(500).json({ error: 'Failed to fetch tournaments' });
@@ -44,7 +63,7 @@ const getTournamentById = async (req, res) => {
       return res.status(404).json({ error: 'Tournament not found' });
     }
     
-    res.json(result.rows[0]);
+    res.json(toCamelCase(result.rows[0]));
   } catch (error) {
     console.error('Error fetching tournament:', error);
     res.status(500).json({ error: 'Failed to fetch tournament' });
@@ -117,7 +136,7 @@ const updateTournament = async (req, res) => {
       return res.status(404).json({ error: 'Tournament not found' });
     }
 
-    res.json(result.rows[0]);
+    res.json(toCamelCase(result.rows[0]));
   } catch (error) {
     console.error('Error updating tournament:', error);
     res.status(500).json({ error: 'Failed to update tournament' });
@@ -196,7 +215,7 @@ const registerTeamToTournament = async (req, res) => {
         [req.params.tournamentId, teamId, seedNumber || null]
       );
 
-      res.status(201).json(result.rows[0]);
+      res.status(201).json(toCamelCase(result.rows[0]));
     });
   } catch (error) {
     console.error('Error registering team:', error);
@@ -220,13 +239,13 @@ const getRegisteredTeamsInTournament = async (req, res) => {
 
     const teamsWithDetails = result.rows.map(row => ({
       id: row.id,
-      tournament_id: row.tournament_id,
-      team_id: row.team_id,
-      seed_number: row.seed_number,
-      total_tournament_score: row.total_tournament_score,
-      games_played_in_tournament: row.games_played_in_tournament,
-      sessions_played_in_tournament: row.sessions_played_in_tournament,
-      registration_date: row.registration_date,
+      tournamentId: row.tournament_id,
+      teamId: row.team_id,
+      seedNumber: row.seed_number,
+      totalTournamentScore: row.total_tournament_score,
+      gamesPlayedInTournament: row.games_played_in_tournament,
+      sessionsPlayedInTournament: row.sessions_played_in_tournament,
+      registrationDate: row.registration_date,
       status: row.status,
       teamDetails: {
         id: row.team_id,
@@ -304,7 +323,7 @@ const registerPlayerToTeamInTournament = async (req, res) => {
         [req.params.teamId, playerId, req.params.tournamentId, role || 'regular']
       );
 
-      res.status(201).json(result.rows[0]);
+      res.status(201).json(toCamelCase(result.rows[0]));
     });
   } catch (error) {
     console.error('Error assigning player to team:', error);
@@ -328,13 +347,13 @@ const getRegisteredPlayersInRegisteredTeamInTournament = async (req, res) => {
 
     const playersWithDetails = result.rows.map(row => ({
       id: row.id,
-      team_id: row.team_id,
-      player_id: row.player_id,
-      tournament_id: row.tournament_id,
+      teamId: row.team_id,
+      playerId: row.player_id,
+      tournamentId: row.tournament_id,
       role: row.role,
-      is_active: row.is_active,
-      joined_date: row.joined_date,
-      left_date: row.left_date,
+      isActive: row.is_active,
+      joinedDate: row.joined_date,
+      leftDate: row.left_date,
       playerDetails: {
         id: row.player_id,
         name: row.name,
@@ -386,7 +405,7 @@ const registerSessionToTournament = async (req, res) => {
         [req.params.tournamentId, parseInt(sessionNumber), sessionName || `Session ${sessionNumber}`, new Date(sessionDate), notes || null]
       );
 
-      res.status(201).json(result.rows[0]);
+      res.status(201).json(toCamelCase(result.rows[0]));
     });
   } catch (error) {
     console.error('Error creating league session:', error);
@@ -403,7 +422,7 @@ const getRegisteredSessionsInTournament = async (req, res) => {
       'SELECT * FROM league_sessions WHERE tournament_id = $1 ORDER BY session_number',
       [req.params.tournamentId]
     );
-    res.json(result.rows);
+    res.json(toCamelCase(result.rows));
   } catch (error) {
     console.error('Error fetching tournament sessions:', error);
     res.status(500).json({ error: 'Failed to fetch tournament sessions' });
@@ -463,8 +482,8 @@ const previewMatchMaking = async (req, res) => {
       matchesPerTeam: registeredTeams.length - 1,
       matchesPerSession: hasOddTeams ? Math.floor(registeredTeams.length / 2) : registeredTeams.length / 2,
       teamsPerSession: hasOddTeams ? registeredTeams.length - 1 : registeredTeams.length,
-      schedule,
-      validationIssues,
+      schedule: toCamelCase(schedule),
+      validationIssues: toCamelCase(validationIssues),
       isValidSchedule: validationIssues.length === 0,
       teams: registeredTeams,
       byeRotation: hasOddTeams ? schedule.map(s => ({ 
@@ -603,7 +622,7 @@ const getTournamentSchedule = async (req, res) => {
         noTeamConflicts: Object.values(sessionAnalysis).every(sa => sa.conflicts.length === 0),
         completeRoundRobin: isCompleteRoundRobin
       },
-      sessions: tournamentSessions.sort((a, b) => a.session_number - b.session_number)
+      sessions: toCamelCase(tournamentSessions.sort((a, b) => a.session_number - b.session_number))
     };
 
     res.json(summary);
@@ -843,7 +862,7 @@ const getRoundMatches = async (req, res) => {
 
     // Enrich matches with team details
     const enrichedMatches = sessionMatches.map(match => ({
-      ...match,
+      ...toCamelCase(match),
       homeTeamDetails: {
         id: match.home_team_id,
         name: match.home_team_name
@@ -897,7 +916,7 @@ const getAllMatchesForTournament = async (req, res) => {
     );
 
     const enrichedMatches = matchesResult.rows.map(match => ({
-      ...match,
+      ...toCamelCase(match),
       homeTeamDetails: {
         id: match.home_team_id,
         name: match.home_team_name
@@ -947,12 +966,12 @@ const getSessionsForTournament = async (req, res) => {
     );
 
     const enrichedSessions = sessionsResult.rows.map(session => ({
-      ...session,
-      match_count: parseInt(session.match_count),
-      completed_matches: parseInt(session.completed_matches),
-      scheduled_matches: parseInt(session.scheduled_matches),
-      in_progress_matches: parseInt(session.in_progress_matches),
-      is_complete: parseInt(session.match_count) > 0 && parseInt(session.completed_matches) === parseInt(session.match_count)
+      ...toCamelCase(session),
+      matchCount: parseInt(session.match_count),
+      completedMatches: parseInt(session.completed_matches),
+      scheduledMatches: parseInt(session.scheduled_matches),
+      inProgressMatches: parseInt(session.in_progress_matches),
+      isComplete: parseInt(session.match_count) > 0 && parseInt(session.completed_matches) === parseInt(session.match_count)
     }));
 
     res.json(enrichedSessions);
@@ -1071,8 +1090,8 @@ const generateMatches = async (req, res) => {
       if (validationIssues.length > 0 && !forceCreate) {
         return res.status(400).json({
           error: 'Schedule validation failed. Use forceCreate=true to override.',
-          validationIssues,
-          schedule
+          validationIssues: toCamelCase(validationIssues),
+          schedule: toCamelCase(schedule)
         });
       }
 
@@ -1111,7 +1130,7 @@ const generateMatches = async (req, res) => {
         );
         
         const sessionRecord = sessionResult.rows[0];
-        createdSessions.push(sessionRecord);
+        createdSessions.push(toCamelCase(sessionRecord));
 
         // Create matches for this session
         for (let matchIndex = 0; matchIndex < session.matches.length; matchIndex++) {
@@ -1132,7 +1151,7 @@ const generateMatches = async (req, res) => {
             ]
           );
           
-          createdMatches.push(matchResult.rows[0]);
+          createdMatches.push(toCamelCase(matchResult.rows[0]));
         }
       }
 
@@ -1150,9 +1169,9 @@ const generateMatches = async (req, res) => {
         totalSessionsCreated: createdSessions.length,
         totalTeams: registeredTeams.length,
         sessionsRequired,
-        validationIssues,
+        validationIssues: toCamelCase(validationIssues),
         wasForced: validationIssues.length > 0 && forceCreate,
-        schedule,
+        schedule: toCamelCase(schedule),
         createdMatches,
         createdSessions
       };

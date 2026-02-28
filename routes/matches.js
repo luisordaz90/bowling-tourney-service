@@ -10,15 +10,15 @@ const {
     calculateTeamScoreInMatch
 } = require('../controllers/matchesController');
 
-router.get('/:id', getMatchById);
-router.put('/:id/status', updateMatchStatus);
+router.get('/:matchId', getMatchById);
+router.put('/:matchId/status', updateMatchStatus);
 
-router.post('/:id/player-scores', addPlayerScoreInMatch);
-router.get('/:id/player-scores', getPlayersMatchScore);
+router.post('/:matchId/player-scores', addPlayerScoreInMatch);
+router.get('/:matchId/player-scores', getPlayersMatchScore);
 
-router.post('/:id/team-scores', addTeamScoreInMatch);
-router.get('/:id/team-scores', getTeamsScoreInMatch);
+router.post('/:matchId/team-scores', addTeamScoreInMatch);
+router.get('/:matchId/team-scores', getTeamsScoreInMatch);
 
-router.post('/:id/team-scores/calculate', calculateTeamScoreInMatch);
+router.post('/:matchId/team-scores/calculate', calculateTeamScoreInMatch);
 
 module.exports = router;

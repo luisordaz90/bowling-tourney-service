@@ -1,5 +1,6 @@
 // controllers/teamController.js
 const { query, withTransaction } = require('../config/database');
+const logger = require('../config/logger');
 
 const createTeam = async (req, res) => {
   try {
@@ -22,9 +23,9 @@ const createTeam = async (req, res) => {
       [name, captainName, captainEmail, captainPhone || null]
     );
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json((result.rows[0]));
   } catch (error) {
-    console.error('Error creating team:', error);
+    logger.error('Error creating team:', error);
     
     // Handle unique constraint violations
     if (error.code === '23505') {
@@ -40,9 +41,9 @@ const createTeam = async (req, res) => {
 const getTeams = async (req, res) => {
   try {
     const result = await query('SELECT * FROM teams ORDER BY name');
-    res.json(result.rows);
+    res.json((result.rows));
   } catch (error) {
-    console.error('Error fetching teams:', error);
+    logger.error('Error fetching teams:', error);
     res.status(500).json({ error: 'Failed to fetch teams' });
   }
 };
@@ -55,9 +56,9 @@ const getTeamById = async (req, res) => {
       return res.status(404).json({ error: 'Team not found' });
     }
     
-    res.json(result.rows[0]);
+    res.json((result.rows[0]));
   } catch (error) {
-    console.error('Error fetching team:', error);
+    logger.error('Error fetching team:', error);
     res.status(500).json({ error: 'Failed to fetch team' });
   }
 };
@@ -120,9 +121,9 @@ const updateTeam = async (req, res) => {
       return res.status(404).json({ error: 'Team not found' });
     }
 
-    res.json(result.rows[0]);
+    res.json((result.rows[0]));
   } catch (error) {
-    console.error('Error updating team:', error);
+    logger.error('Error updating team:', error);
     
     // Handle unique constraint violations
     if (error.code === '23505') {
@@ -160,7 +161,7 @@ const deleteTeam = async (req, res) => {
 
     res.status(204).send();
   } catch (error) {
-    console.error('Error deleting team:', error);
+    logger.error('Error deleting team:', error);
     
     if (error.message === 'Team not found') {
       return res.status(404).json({ error: error.message });
