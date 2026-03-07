@@ -21,6 +21,7 @@ const {
   getSessionsForTournament
 } = require('../controllers/tournamentController');
 const { getStandings, getStatistics, getPlayerTournamentStatistics, getTeamTournamentStatistics, getTournamentPlayersStatistics, getTournamentTeamsStatistics } = require('../controllers/statisticsController');
+const { createMatch } = require('../controllers/matchesController');
 
 // Tournament CRUD
 router.post('/', createTournament);
@@ -38,7 +39,7 @@ router.post('/:tournamentId/teams/:teamId/players', registerPlayerToTeamInTourna
 router.get('/:tournamentId/teams/:teamId/players', getRegisteredPlayersInRegisteredTeamInTournament);
 
 // Session Tournament related resources
-router.post('/:tournamentId/session', registerSessionToTournament);
+router.post('/:tournamentId/sessions', registerSessionToTournament);
 
 router.get('/:tournamentId/standings', getStandings);
 router.get('/:tournamentId/statistics', getStatistics);
@@ -55,6 +56,7 @@ router.delete('/:tournamentId/schedule', deleteTournamentSchedule);
 router.get('/:tournamentId/schedule/validate', validateTournamentSchedule);
 router.get('/:tournamentId/sessions/:sessionNumber/matches', getRoundMatches);
 
+router.post('/:tournamentId/matches', createMatch);
 router.get('/:tournamentId/matches', getAllMatchesForTournament);
 router.get('/:tournamentId/sessions', getSessionsForTournament);
 
