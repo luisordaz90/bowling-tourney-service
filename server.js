@@ -23,6 +23,7 @@ const matchRoutes = require('./routes/matches');
 const playerStatisticsRoutes = require('./routes/playerStatistics');
 const teamStatisticsRoutes = require('./routes/teamStatistics');
 const leagueRoutes = require('./routes/leagues');
+const leagueDayRoutes = require('./routes/leagueDays');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
@@ -104,14 +105,15 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-app.use('/api/tournaments', tournamentRoutes);
-app.use('/api/teams',outputFormatter, teamRoutes);
+app.use('/api/tournaments', outputFormatter, tournamentRoutes);
+app.use('/api/teams', outputFormatter, teamRoutes);
 app.use('/api/players', outputFormatter, playerRoutes);
 app.use('/api/sessions', outputFormatter, sessionRoutes);
 app.use('/api/matches', outputFormatter, matchRoutes);
 app.use('/api/player-statistics', outputFormatter, playerStatisticsRoutes);
 app.use('/api/team-statistics', outputFormatter, teamStatisticsRoutes);
 app.use('/api/leagues', outputFormatter, leagueRoutes);
+app.use('/api/league-days', outputFormatter, leagueDayRoutes);
 
 
 

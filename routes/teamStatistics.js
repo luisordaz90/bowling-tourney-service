@@ -1,9 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const {
-    updateTeamStatistics
-} = require('../controllers/teamStatisticsController')
+const { updateTeamStatistics } = require('../controllers/statisticsController');
 
-router.put('/:id/:tournamentId', updateTeamStatistics);
+router.put('/:teamId/:tournamentId', updateTeamStatistics);
 
 module.exports = router;

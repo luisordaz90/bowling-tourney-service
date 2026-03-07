@@ -5,7 +5,6 @@ const {
   registerPlayerToTeamInTournament,
   getRegisteredPlayersInRegisteredTeamInTournament,
   registerSessionToTournament,
-  getRegisteredSessionsInTournament,
   createTournament,
   deleteTournament,
   getAllTournaments,
@@ -40,7 +39,6 @@ router.get('/:tournamentId/teams/:teamId/players', getRegisteredPlayersInRegiste
 
 // Session Tournament related resources
 router.post('/:tournamentId/session', registerSessionToTournament);
-router.get(':tournamentId/sessions', getRegisteredSessionsInTournament);
 
 router.get('/:tournamentId/standings', getStandings);
 router.get('/:tournamentId/statistics', getStatistics);
