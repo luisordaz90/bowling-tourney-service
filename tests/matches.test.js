@@ -80,9 +80,7 @@ describe('Match score recording', () => {
       .send({
         teamId: homeTeamId,
         playerId: homePlayerId,
-        game1Score: 180,
-        game2Score: 200,
-        game3Score: 190,
+        scores: [180, 200, 190],
       });
 
     expect(res.status).toBe(201);
@@ -95,9 +93,7 @@ describe('Match score recording', () => {
       .send({
         teamId: homeTeamId,
         playerId: homePlayerId,
-        game1Score: 150,
-        game2Score: 160,
-        game3Score: 170,
+        scores: [150, 160, 170],
       });
 
     expect(res.status).toBe(400);
@@ -110,9 +106,7 @@ describe('Match score recording', () => {
       .send({
         teamId: awayTeamId,
         playerId: awayPlayerId,
-        game1Score: 301,
-        game2Score: 200,
-        game3Score: 190,
+        scores: [301, 200, 190],
       });
 
     expect(res.status).toBe(400);
@@ -126,9 +120,7 @@ describe('Match score recording', () => {
       .send({
         teamId: awayTeamId,
         playerId: awayPlayerId,
-        game1Score: 160,
-        game2Score: 170,
-        game3Score: 175,
+        scores: [160, 170, 175],
       });
 
     const res = await request(app)

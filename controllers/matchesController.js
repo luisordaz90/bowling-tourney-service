@@ -78,16 +78,18 @@ const updateMatchStatus = async (req, res) => {
 
 // Submit all game scores for a player in a match.
 // Inserts one row per game into the scores table.
+// Submit game scores for a player in a match.
+// Accepts scores as an array: { teamId, playerId, scores: [180, 200, 190], handicapApplied? }
+// Length is validated against tournament.games_per_session after the match is fetched.
 const addPlayerScoreInMatch = async (req, res) => {
   try {
-    const { teamId, playerId, game1Score, game2Score, game3Score, handicapApplied } = req.body;
+    const { teamId, playerId, scores, handicapApplied } = req.body;
 
-    if (!teamId || !playerId || game1Score === undefined || game2Score === undefined || game3Score === undefined) {
-      return res.status(400).json({ error: 'Team ID, Player ID, and all three game scores are required' });
+    if (!teamId || !playerId || !Array.isArray(scores) || scores.length === 0) {
+      return res.status(400).json({ error: 'teamId, playerId, and scores[] are required' });
     }
 
-    const games = [game1Score, game2Score, game3Score];
-    if (games.some(score => score < 0 || score > 300)) {
+    if (scores.some(s => s < 0 || s > 300)) {
       return res.status(400).json({ error: 'Game scores must be between 0 and 300' });
     }
 
@@ -103,6 +105,14 @@ const addPlayerScoreInMatch = async (req, res) => {
         throw Object.assign(new Error('Match not found'), { status: 400 });
       }
       const match = matchResult.rows[0];
+      const gamesPerSession = match.games_per_session;
+
+      if (scores.length !== gamesPerSession) {
+        throw Object.assign(
+          new Error(`Expected ${gamesPerSession} scores, got ${scores.length}`),
+          { status: 400 }
+        );
+      }
 
       if (teamId !== match.home_team_id && teamId !== match.away_team_id) {
         throw Object.assign(new Error('Team is not part of this match'), { status: 400 });
@@ -121,7 +131,6 @@ const addPlayerScoreInMatch = async (req, res) => {
         throw Object.assign(new Error('Score already recorded for this player in this match'), { status: 400 });
       }
 
-      const gamesPerSession = match.games_per_session;
       const hdcp = handicapApplied || 0;
       const insertedRows = [];
 
@@ -133,12 +142,12 @@ const addPlayerScoreInMatch = async (req, res) => {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING *`,
           [match.session_id, match.tournament_id, playerId, teamId,
-           match.id, i + 1, games[i], hdcp]
+           match.id, i + 1, scores[i], hdcp]
         );
         insertedRows.push(r.rows[0]);
       }
 
-      const totalScore = games.slice(0, gamesPerSession).reduce((s, g) => s + g, 0);
+      const totalScore = scores.reduce((s, g) => s + g, 0);
       await client.query(
         `UPDATE players
          SET total_games_played = total_games_played + $1,
@@ -157,9 +166,6 @@ const addPlayerScoreInMatch = async (req, res) => {
         matchId: match.id,
         playerId,
         teamId,
-        game1Score: games[0],
-        game2Score: gamesPerSession > 1 ? games[1] : undefined,
-        game3Score: gamesPerSession > 2 ? games[2] : undefined,
         handicapApplied: hdcp,
         games: insertedRows.map(r => ({ gameNumber: r.game_number, score: r.score }))
       });
