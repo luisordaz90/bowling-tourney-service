@@ -22,7 +22,7 @@ const {
 } = require('../controllers/tournamentController');
 const { getStandings, getStatistics, getPlayerTournamentStatistics, getTeamTournamentStatistics, getTournamentPlayersStatistics, getTournamentTeamsStatistics } = require('../controllers/statisticsController');
 const { createMatch } = require('../controllers/matchesController');
-const { createSessionEntry, getSessionEntries } = require('../controllers/sessionEntriesController');
+const { submitScore, getScores } = require('../controllers/scoresController');
 
 // Tournament CRUD
 router.post('/', createTournament);
@@ -56,8 +56,8 @@ router.get('/:tournamentId/schedule/summary', getTournamentSchedule);
 router.delete('/:tournamentId/schedule', deleteTournamentSchedule);
 router.get('/:tournamentId/schedule/validate', validateTournamentSchedule);
 router.get('/:tournamentId/sessions/:sessionNumber/matches', getRoundMatches);
-router.post('/:tournamentId/sessions/:sessionNumber/entries', createSessionEntry);
-router.get('/:tournamentId/sessions/:sessionNumber/entries', getSessionEntries);
+router.post('/:tournamentId/scores', submitScore);
+router.get('/:tournamentId/scores', getScores);
 
 router.post('/:tournamentId/matches', createMatch);
 router.get('/:tournamentId/matches', getAllMatchesForTournament);
