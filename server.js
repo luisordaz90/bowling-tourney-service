@@ -28,6 +28,8 @@ const leagueDayRoutes = require('./routes/leagueDays');
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const requestLogger = require('./middleware/requestLogger');
+const requirePlayer = require('./middleware/requirePlayer');
+const requireTeamContext = require('./middleware/requireTeamContext');
 const logger = require('./config/logger');
 
 const app = express();
@@ -72,8 +74,12 @@ const outputFormatter = (req, res, next) => {
 };
 
 // API Routes
-// Uncomment the line below to enforce JWT authentication on all endpoints
+// Uncomment the three lines below to enforce JWT authentication on all endpoints.
+// requirePlayer resolves the JWT player_id claim to a players row.
+// requireTeamContext validates team membership and sets req.teamId for RLS-scoped writes.
 // app.use('/api', jwtCheck);
+// app.use('/api', requirePlayer);
+// app.use('/api', requireTeamContext);
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
