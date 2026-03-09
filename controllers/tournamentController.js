@@ -4,7 +4,8 @@ const { generateRoundRobinSchedule, validateRoundRobinSchedule, toCamelCase } = 
 
 const createTournament = async (req, res) => {
   try {
-    const { name, description, startDate, endDate, maxTeams, totalSessions, sessionType, leagueId, editionId } = req.body;
+    const { name, description, startDate, endDate, maxTeams, totalSessions, sessionType, leagueId, editionId,
+            scheduleType, rankingMethod, hdcpBase, hdcpPercentage } = req.body;
     
     if (!name || !startDate || !endDate || !maxTeams || !totalSessions || !sessionType) {
       return res.status(400).json({ 
@@ -32,10 +33,15 @@ const createTournament = async (req, res) => {
     }
 
     const result = await query(
-      `INSERT INTO tournaments (name, description, start_date, end_date, max_teams, total_sessions, session_type, league_id, edition_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO tournaments (name, description, start_date, end_date, max_teams, total_sessions, session_type,
+                               league_id, edition_id, schedule_type, ranking_method, hdcp_base, hdcp_percentage)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
-      [name, description, new Date(startDate), new Date(endDate), parseInt(maxTeams), parseInt(totalSessions), sessionType, leagueId || null, editionId || null]
+      [name, description, new Date(startDate), new Date(endDate), parseInt(maxTeams), parseInt(totalSessions), sessionType,
+       leagueId || null, editionId || null,
+       scheduleType || 'paired', rankingMethod || 'points',
+       hdcpBase != null ? parseInt(hdcpBase) : 220,
+       hdcpPercentage != null ? parseFloat(hdcpPercentage) : 0.90]
     );
 
     res.status(201).json(toCamelCase(result.rows[0]));
