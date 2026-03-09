@@ -9,6 +9,11 @@
 // it bypasses RLS and can execute DDL freely.
 
 const { Pool } = require('pg');
+const { AsyncLocalStorage } = require('async_hooks');
+
+// Stores the team-scoped DB client for the duration of a request.
+// Set by requireTeamContext middleware; read by withTransaction.
+const requestContext = new AsyncLocalStorage();
 
 const dbConfig = {
   user:     process.env.DB_APP_USER      || process.env.DB_USER     || 'postgres',
@@ -45,8 +50,20 @@ const query = async (text, params) => {
 
 const getClient = async () => pool.connect();
 
-// Transaction without team context (admin / cross-team operations).
+// Transaction helper.
+//
+// If requireTeamContext middleware is active for this request it will have
+// stored a team-scoped client in requestContext. That client already has an
+// open transaction with SET LOCAL app.current_team_id, so we reuse it and
+// skip BEGIN/COMMIT/ROLLBACK — the middleware owns the lifecycle.
+//
+// Without middleware context a fresh client + transaction is created here.
 const withTransaction = async (callback) => {
+  const contextClient = requestContext.getStore()?.client;
+  if (contextClient) {
+    return callback(contextClient);
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -104,6 +121,7 @@ module.exports = {
   getClient,
   withTransaction,
   withTeamContext,
+  requestContext,
   pool,
   closePool,
 };
