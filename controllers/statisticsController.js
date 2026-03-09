@@ -4,35 +4,70 @@ const logger = require('../config/logger');
 
 const getStandings = async (req, res) => {
   try {
-    // Use the updated tournament_standings view with points
+    const tournamentResult = await query(
+      'SELECT id, ranking_method FROM tournaments WHERE id = $1',
+      [req.params.tournamentId]
+    );
+    if (tournamentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+
+    const { ranking_method } = tournamentResult.rows[0];
+
+    // pins-based standings: aggregate session_entries by player, rank by total pins
+    if (ranking_method === 'pins') {
+      const result = await query(
+        `SELECT
+           p.id                                         AS player_id,
+           p.name                                       AS player_name,
+           se.team_id,
+           t.name                                       AS team_name,
+           COUNT(se.id)                                 AS sessions_played,
+           SUM(se.total_pins)                           AS total_pins,
+           ROUND(SUM(se.session_average) / COUNT(se.id), 2) AS tournament_average,
+           RANK() OVER (ORDER BY SUM(se.total_pins) DESC) AS current_rank
+         FROM   session_entries se
+         JOIN   players p ON se.player_id = p.id
+         LEFT JOIN teams t ON se.team_id  = t.id
+         WHERE  se.tournament_id = $1
+         GROUP BY p.id, p.name, se.team_id, t.name
+         ORDER BY current_rank`,
+        [req.params.tournamentId]
+      );
+
+      const standings = result.rows.map(row => ({
+        playerId: row.player_id,
+        playerName: row.player_name,
+        teamId: row.team_id,
+        teamName: row.team_name,
+        sessionsPlayed: parseInt(row.sessions_played),
+        totalPins: parseInt(row.total_pins),
+        tournamentAverage: parseFloat(row.tournament_average),
+        rank: parseInt(row.current_rank)
+      }));
+
+      return res.json(standings);
+    }
+
+    // points-based standings: use existing tournament_standings view
     const result = await query(
-      `SELECT * FROM tournament_standings 
-       WHERE tournament_id = $1 
+      `SELECT * FROM tournament_standings
+       WHERE tournament_id = $1
        ORDER BY current_rank`,
       [req.params.tournamentId]
     );
 
-    if (result.rows.length === 0) {
-      // Check if tournament exists
-      const tournamentResult = await query('SELECT id FROM tournaments WHERE id = $1', [req.params.tournamentId]);
-      if (tournamentResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Tournament not found' });
-      }
-    }
-
-    // Transform the data to match the expected API format with new point system
     const standings = result.rows.map(row => ({
       teamId: row.team_id,
       teamName: row.team_name,
       captainName: row.captain_name,
       totalScore: parseInt(row.total_score),
-      gamesPlayed: parseInt(row.matches_played) * 3, // Assuming 3 games per match
+      gamesPlayed: parseInt(row.matches_played) * 3,
       averageScore: parseFloat(row.team_average),
       matchesPlayed: parseInt(row.matches_played),
       matchesWon: parseInt(row.matches_won),
       matchesLost: parseInt(row.matches_lost),
       winPercentage: parseFloat(row.win_percentage),
-      // New point system fields
       totalPoints: parseInt(row.total_points),
       pointsPercentage: parseFloat(row.points_percentage),
       maxPossiblePoints: parseInt(row.matches_played) * 4,
@@ -41,7 +76,7 @@ const getStandings = async (req, res) => {
       rank: parseInt(row.current_rank)
     }));
 
-    res.json((standings));
+    res.json(standings);
   } catch (error) {
     logger.error('Error fetching standings:', error);
     res.status(500).json({ error: 'Failed to get standings' });
@@ -168,6 +203,16 @@ const getPlayerTournamentStatistics = async (req, res) => {
 
     const stats = statsResult.rows[0];
 
+    // Fetch current_handicap from player_statistics (set by trigger after each session entry)
+    const hdcpResult = await query(
+      `SELECT current_handicap FROM player_statistics
+       WHERE player_id = $1 AND tournament_id = $2`,
+      [playerId, tournamentId]
+    );
+    const currentHandicap = hdcpResult.rows.length > 0
+      ? parseInt(hdcpResult.rows[0].current_handicap)
+      : 0;
+
     const statistics = {
       playerId,
       tournamentId,
@@ -177,7 +222,8 @@ const getPlayerTournamentStatistics = async (req, res) => {
       highestGame: parseInt(stats.highest_game),
       highestSeries: parseInt(stats.highest_series),
       matchesPlayed: parseInt(stats.matches_played),
-      matchesContributedToWin: parseInt(stats.matches_contributed_to_win)
+      matchesContributedToWin: parseInt(stats.matches_contributed_to_win),
+      currentHandicap
     };
 
     res.json((statistics));
