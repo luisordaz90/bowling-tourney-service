@@ -1,6 +1,6 @@
 // tests/matches.test.js
 // Integration tests for the match/scoring domain.
-// Flow: create tournament → register 2 teams + players → generate round-robin → score a match.
+// Flow: create tournament → register 2 teams + players → generate round-robin → score via session endpoint.
 const request = require('supertest');
 const app = require('../server');
 
@@ -10,6 +10,7 @@ let awayTeamId;
 let homePlayerId;
 let awayPlayerId;
 let matchId;
+let sessionNumber;
 
 beforeAll(async () => {
   // Create two teams
@@ -63,20 +64,22 @@ beforeAll(async () => {
     .post(`/api/tournaments/${tournamentId}/teams/${awayTeamId}/players`)
     .send({ playerId: awayPlayerId });
 
-  // Generate round-robin schedule (creates matches)
+  // Generate round-robin schedule (creates sessions + matches)
   await request(app)
     .post(`/api/tournaments/${tournamentId}/schedule/round-robin`)
     .send({});
 
-  // Fetch the first generated match
+  // Fetch the first generated match and its session number
   const matchesRes = await request(app).get(`/api/tournaments/${tournamentId}/matches`);
-  matchId = matchesRes.body[0]?.id || matchesRes.body[0]?.matchId;
+  const firstMatch = matchesRes.body[0];
+  matchId = firstMatch?.id || firstMatch?.matchId;
+  sessionNumber = firstMatch?.sessionNumber;
 });
 
 describe('Match score recording', () => {
   it('records a player score and returns 201', async () => {
     const res = await request(app)
-      .post(`/api/matches/${matchId}/player-scores`)
+      .post(`/api/tournaments/${tournamentId}/sessions/${sessionNumber}/scores`)
       .send({
         teamId: homeTeamId,
         playerId: homePlayerId,
@@ -84,12 +87,13 @@ describe('Match score recording', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body).toHaveProperty('matchId', matchId);
+    expect(res.body).toHaveProperty('matchId');
+    expect(res.body.matchId).not.toBeNull();
   });
 
   it('rejects a duplicate player score entry with 400', async () => {
     const res = await request(app)
-      .post(`/api/matches/${matchId}/player-scores`)
+      .post(`/api/tournaments/${tournamentId}/sessions/${sessionNumber}/scores`)
       .send({
         teamId: homeTeamId,
         playerId: homePlayerId,
@@ -102,7 +106,7 @@ describe('Match score recording', () => {
 
   it('rejects a score above 300 with 400', async () => {
     const res = await request(app)
-      .post(`/api/matches/${matchId}/player-scores`)
+      .post(`/api/tournaments/${tournamentId}/sessions/${sessionNumber}/scores`)
       .send({
         teamId: awayTeamId,
         playerId: awayPlayerId,
@@ -116,7 +120,7 @@ describe('Match score recording', () => {
   it('calculates team score from player scores and returns 201', async () => {
     // First record the away player score with valid values
     await request(app)
-      .post(`/api/matches/${matchId}/player-scores`)
+      .post(`/api/tournaments/${tournamentId}/sessions/${sessionNumber}/scores`)
       .send({
         teamId: awayTeamId,
         playerId: awayPlayerId,
@@ -146,5 +150,68 @@ describe('Match score recording', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('completed');
+  });
+});
+
+describe('Match score update (PUT)', () => {
+  it('updates player scores and returns 200', async () => {
+    const res = await request(app)
+      .put(`/api/tournaments/${tournamentId}/sessions/${sessionNumber}/scores/${homePlayerId}`)
+      .send({ teamId: homeTeamId, scores: [210, 220, 230] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.scores).toEqual([210, 220, 230]);
+  });
+
+  it('recomputes match points after update on a completed match', async () => {
+    // Scores updated — one team should dominate. Check that points were recomputed.
+    const res = await request(app).get(`/api/matches/${matchId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('completed');
+    const maxPts = Math.max(
+      res.body.pointsBreakdown.homeTeam.totalPoints,
+      res.body.pointsBreakdown.awayTeam.totalPoints
+    );
+    expect(maxPts).toBeGreaterThanOrEqual(3);
+  });
+
+  it('rejects invalid scores with 400', async () => {
+    const res = await request(app)
+      .put(`/api/tournaments/${tournamentId}/sessions/${sessionNumber}/scores/${homePlayerId}`)
+      .send({ teamId: homeTeamId, scores: [301, 220, 230] });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 for nonexistent player', async () => {
+    const res = await request(app)
+      .put(`/api/tournaments/${tournamentId}/sessions/${sessionNumber}/scores/00000000-0000-0000-0000-000000000000`)
+      .send({ teamId: homeTeamId, scores: [200, 200, 200] });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('Match score delete (DELETE)', () => {
+  it('deletes player scores and reverts match status', async () => {
+    const res = await request(app)
+      .delete(`/api/tournaments/${tournamentId}/sessions/${sessionNumber}/scores/${homePlayerId}`)
+      .send({ teamId: homeTeamId });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toMatch(/deleted/i);
+
+    // Match should no longer be completed
+    const matchRes = await request(app).get(`/api/matches/${matchId}`);
+    expect(matchRes.body.status).toBe('in_progress');
+    expect(matchRes.body.winnerTeamName).toBeNull();
+  });
+
+  it('returns 404 when deleting already-deleted scores', async () => {
+    const res = await request(app)
+      .delete(`/api/tournaments/${tournamentId}/sessions/${sessionNumber}/scores/${homePlayerId}`)
+      .send({ teamId: homeTeamId });
+
+    expect(res.status).toBe(404);
   });
 });

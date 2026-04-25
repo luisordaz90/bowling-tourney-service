@@ -1,6 +1,6 @@
 // tests/sessionEntries.test.js
 // Integration tests for the unified score submission endpoint.
-// Covers: open format (session_entries) and paired format (player_match_scores),
+// Covers: open format (session scores) and paired format,
 // standings by pins, and handicap recalculation trigger.
 const request = require('supertest');
 const app = require('../server');
@@ -13,14 +13,14 @@ let soloTeamOneId;
 let soloTeamTwoId;
 
 // Player 1: 180/180/180 → raw avg 180 → hdcp = FLOOR((220-180)*0.90) = 36
-const P1_GAMES = { game1Score: 180, game2Score: 180, game3Score: 180 };
-const P1_RAW   = 540;
-const P1_HDCP  = 36;
-const P1_TOTAL = P1_RAW + P1_HDCP * 3; // 648
+const P1_SCORES = [180, 180, 180];
+const P1_RAW    = 540;
+const P1_HDCP   = 36;
+const P1_TOTAL  = P1_RAW + P1_HDCP * 3; // 648
 
 // Player 2: 210/210/210 → raw avg 210 → hdcp = FLOOR((220-210)*0.90) = 9
-const P2_GAMES = { game1Score: 210, game2Score: 210, game3Score: 210 };
-const P2_RAW   = 630;
+const P2_SCORES = [210, 210, 210];
+const P2_RAW    = 630;
 
 beforeAll(async () => {
   // Players
@@ -73,13 +73,14 @@ beforeAll(async () => {
 describe('Score submission — open format', () => {
   it('records a score and returns 201 with correct computed fields', async () => {
     const res = await request(app)
-      .post(`/api/tournaments/${tournamentId}/scores`)
-      .send({ sessionNumber: 1, playerId: playerOneId, teamId: soloTeamOneId, ...P1_GAMES });
+      .post(`/api/tournaments/${tournamentId}/sessions/1/scores`)
+      .send({ playerId: playerOneId, teamId: soloTeamOneId, scores: P1_SCORES });
 
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty('id');
     expect(res.body.playerId).toBe(playerOneId);
     expect(res.body.sessionNumber).toBe(1);
+    expect(res.body.matchId).toBeNull();
     // First session — no prior hdcp, so handicapApplied = 0
     expect(res.body.handicapApplied).toBe(0);
     expect(res.body.totalPins).toBe(P1_RAW);
@@ -88,8 +89,8 @@ describe('Score submission — open format', () => {
 
   it('rejects a duplicate score for the same player in the same session with 400', async () => {
     const res = await request(app)
-      .post(`/api/tournaments/${tournamentId}/scores`)
-      .send({ sessionNumber: 1, playerId: playerOneId, teamId: soloTeamOneId, ...P1_GAMES });
+      .post(`/api/tournaments/${tournamentId}/sessions/1/scores`)
+      .send({ playerId: playerOneId, teamId: soloTeamOneId, scores: P1_SCORES });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/already recorded/i);
@@ -97,8 +98,8 @@ describe('Score submission — open format', () => {
 
   it('rejects a score above 300 with 400', async () => {
     const res = await request(app)
-      .post(`/api/tournaments/${tournamentId}/scores`)
-      .send({ sessionNumber: 1, playerId: playerTwoId, teamId: soloTeamTwoId, game1Score: 301, game2Score: 200, game3Score: 200 });
+      .post(`/api/tournaments/${tournamentId}/sessions/1/scores`)
+      .send({ playerId: playerTwoId, teamId: soloTeamTwoId, scores: [301, 200, 200] });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/between 0 and 300/i);
@@ -106,8 +107,8 @@ describe('Score submission — open format', () => {
 
   it('records a second player score in the same session', async () => {
     const res = await request(app)
-      .post(`/api/tournaments/${tournamentId}/scores`)
-      .send({ sessionNumber: 1, playerId: playerTwoId, teamId: soloTeamTwoId, ...P2_GAMES });
+      .post(`/api/tournaments/${tournamentId}/sessions/1/scores`)
+      .send({ playerId: playerTwoId, teamId: soloTeamTwoId, scores: P2_SCORES });
 
     expect(res.status).toBe(201);
     expect(res.body.handicapApplied).toBe(0);
@@ -119,18 +120,18 @@ describe('Score submission — open format', () => {
 describe('Score submission — paired format', () => {
   it('returns 404 when no session exists for the given sessionNumber', async () => {
     const res = await request(app)
-      .post(`/api/tournaments/${matchplayTournamentId}/scores`)
-      .send({ sessionNumber: 99, playerId: playerOneId, teamId: soloTeamOneId, ...P1_GAMES });
+      .post(`/api/tournaments/${matchplayTournamentId}/sessions/99/scores`)
+      .send({ playerId: playerOneId, teamId: soloTeamOneId, scores: P1_SCORES });
 
     expect(res.status).toBe(404);
     expect(res.body.error).toMatch(/session not found/i);
   });
 });
 
-describe('Score retrieval — GET /tournaments/:id/scores?session=n', () => {
+describe('Score retrieval — GET /tournaments/:id/sessions/:sessionNumber/scores', () => {
   it('returns scores for a session ordered by totalPins DESC for open format', async () => {
     const res = await request(app)
-      .get(`/api/tournaments/${tournamentId}/scores?session=1`);
+      .get(`/api/tournaments/${tournamentId}/sessions/1/scores`);
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
@@ -143,21 +144,15 @@ describe('Score retrieval — GET /tournaments/:id/scores?session=n', () => {
 
   it('returns enriched player and team names', async () => {
     const res = await request(app)
-      .get(`/api/tournaments/${tournamentId}/scores?session=1`);
+      .get(`/api/tournaments/${tournamentId}/sessions/1/scores`);
 
     expect(res.status).toBe(200);
     expect(res.body[0]).toHaveProperty('playerName');
     expect(res.body[0]).toHaveProperty('teamName');
     expect(res.body[0]).toHaveProperty('sessionAverage');
     expect(res.body[0]).toHaveProperty('sessionNumber', 1);
-  });
-
-  it('returns 400 when session query param is missing', async () => {
-    const res = await request(app)
-      .get(`/api/tournaments/${tournamentId}/scores`);
-
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/session/i);
+    expect(res.body[0]).toHaveProperty('scores');
+    expect(Array.isArray(res.body[0].scores)).toBe(true);
   });
 });
 
@@ -204,8 +199,8 @@ describe('Handicap recalculation', () => {
       .send({ sessionNumber: 2, sessionName: 'Week 2', sessionDate: '2026-04-14' });
 
     const res = await request(app)
-      .post(`/api/tournaments/${tournamentId}/scores`)
-      .send({ sessionNumber: 2, playerId: playerOneId, teamId: soloTeamOneId, ...P1_GAMES });
+      .post(`/api/tournaments/${tournamentId}/sessions/2/scores`)
+      .send({ playerId: playerOneId, teamId: soloTeamOneId, scores: P1_SCORES });
 
     expect(res.status).toBe(201);
     expect(res.body.handicapApplied).toBe(P1_HDCP);

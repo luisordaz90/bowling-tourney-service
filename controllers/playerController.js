@@ -140,12 +140,12 @@ const deletePlayer = async (req, res) => {
 
       // Check if player has recorded scores
       const scoresResult = await client.query(
-        'SELECT COUNT(*) FROM player_match_scores WHERE player_id = $1',
+        'SELECT COUNT(*) FROM scores WHERE player_id = $1',
         [req.params.id]
       );
-      
+
       if (parseInt(scoresResult.rows[0].count) > 0) {
-        throw new Error('Cannot delete player with recorded match scores. Player data is needed for historical records.');
+        throw new Error('Cannot delete player with recorded scores. Player data is needed for historical records.');
       }
 
       // Delete the player (cascade will handle related records)
@@ -160,7 +160,7 @@ const deletePlayer = async (req, res) => {
       return res.status(404).json({ error: error.message });
     }
     
-    if (error.message.includes('Cannot delete player with recorded match scores')) {
+    if (error.message.includes('Cannot delete player with recorded scores')) {
       return res.status(400).json({ error: error.message });
     }
     
@@ -168,25 +168,7 @@ const deletePlayer = async (req, res) => {
   }
 };
 
-const getPlayersByTeam = async (req, res) => {
-  try {
-    const result = await query(
-      `SELECT p.*, tp.role, tp.is_active, tp.joined_date, tp.left_date
-       FROM players p
-       JOIN team_players tp ON p.id = tp.player_id
-       WHERE tp.team_id = $1 AND tp.is_active = true
-       ORDER BY tp.role, p.name`,
-      [req.params.teamId]
-    );
-    
-    res.json((result.rows));
-  } catch (error) {
-    console.error('Error fetching team players:', error);
-    res.status(500).json({ error: 'Failed to fetch team players' });
-  }
-};
-
-// New player-centric endpoints
+// Player-centric endpoints
 
 const getPlayerDashboard = async (req, res) => {
   try {
@@ -240,18 +222,20 @@ const getPlayerDashboard = async (req, res) => {
       [playerId]
     );
     
-    // Get recent match scores
+    // Get recent scores (grouped by session)
     const recentScoresResult = await query(
-      `SELECT pms.*, m.match_date, 
-              ht.name as home_team_name, at.name as away_team_name,
-              t.name as tournament_name
-       FROM player_match_scores pms
-       JOIN matches m ON pms.match_id = m.id
-       JOIN teams ht ON m.home_team_id = ht.id
-       JOIN teams at ON m.away_team_id = at.id
-       JOIN tournaments t ON m.tournament_id = t.id
-       WHERE pms.player_id = $1
-       ORDER BY m.match_date DESC
+      `SELECT s.session_id, s.tournament_id, s.team_id, s.match_id,
+              ls.session_name, ls.session_date,
+              t.name as tournament_name,
+              ARRAY_AGG(s.score ORDER BY s.game_number) as scores,
+              SUM(s.score) as total_pins
+       FROM scores s
+       JOIN league_sessions ls ON s.session_id = ls.id
+       JOIN tournaments t ON s.tournament_id = t.id
+       WHERE s.player_id = $1
+       GROUP BY s.session_id, s.tournament_id, s.team_id, s.match_id,
+                ls.session_name, ls.session_date, t.name
+       ORDER BY ls.session_date DESC
        LIMIT 10`,
       [playerId]
     );
@@ -368,7 +352,6 @@ module.exports = {
   getPlayerById,
   updatePlayer,
   deletePlayer,
-  getPlayersByTeam,
   getPlayerDashboard,
   getPlayerTeams,
   getPlayerStatistics

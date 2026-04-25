@@ -1,67 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const {
-  registerTeamToTournament,
-  registerPlayerToTeamInTournament,
-  getRegisteredPlayersInRegisteredTeamInTournament,
-  registerSessionToTournament,
   createTournament,
-  deleteTournament,
   getAllTournaments,
-  getRegisteredTeamsInTournament,
   getTournamentById,
-  getTournamentSchedule,
-  deleteTournamentSchedule,
-  validateTournamentSchedule,
-  getRoundMatches,
-  previewMatchMaking,
-  generateMatches,
   updateTournament,
-  getAllMatchesForTournament,
-  getSessionsForTournament
+  deleteTournament
 } = require('../controllers/tournamentController');
-const { getStandings, getStatistics, getPlayerTournamentStatistics, getTeamTournamentStatistics, getTournamentPlayersStatistics, getTournamentTeamsStatistics } = require('../controllers/statisticsController');
-const { createMatch } = require('../controllers/matchesController');
-const { submitScore, getScores } = require('../controllers/scoresController');
 
-// Tournament CRUD
 router.post('/', createTournament);
 router.get('/', getAllTournaments);
 router.get('/:id', getTournamentById);
 router.put('/:id', updateTournament);
 router.delete('/:id', deleteTournament);
-
-// Team Tournament related resources
-router.post('/:tournamentId/teams', registerTeamToTournament);
-router.get('/:tournamentId/teams', getRegisteredTeamsInTournament);
-
-// Player + Team Tournament related resources
-router.post('/:tournamentId/teams/:teamId/players', registerPlayerToTeamInTournament);
-router.get('/:tournamentId/teams/:teamId/players', getRegisteredPlayersInRegisteredTeamInTournament);
-
-// Session Tournament related resources
-router.post('/:tournamentId/sessions', registerSessionToTournament);
-
-router.get('/:tournamentId/standings', getStandings);
-router.get('/:tournamentId/statistics', getStatistics);
-router.get('/:tournamentId/players/:playerId/statistics', getPlayerTournamentStatistics);
-router.get('/:tournamentId/teams/:teamId/statistics', getTeamTournamentStatistics);
-
-router.get('/:tournamentId/player-statistics', getTournamentPlayersStatistics)
-router.get('/:tournamentId/team-statistics', getTournamentTeamsStatistics);
-
-router.get('/:tournamentId/schedule/round-robin/preview', previewMatchMaking);
-router.post('/:tournamentId/schedule/round-robin', generateMatches);
-router.get('/:tournamentId/schedule/summary', getTournamentSchedule);
-router.delete('/:tournamentId/schedule', deleteTournamentSchedule);
-router.get('/:tournamentId/schedule/validate', validateTournamentSchedule);
-router.get('/:tournamentId/sessions/:sessionNumber/matches', getRoundMatches);
-router.post('/:tournamentId/scores', submitScore);
-router.get('/:tournamentId/scores', getScores);
-
-router.post('/:tournamentId/matches', createMatch);
-router.get('/:tournamentId/matches', getAllMatchesForTournament);
-router.get('/:tournamentId/sessions', getSessionsForTournament);
-
 
 module.exports = router;

@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const {
-    addPlayerScoreInMatch,
     getPlayersMatchScore,
     addTeamScoreInMatch,
     getTeamsScoreInMatch,
@@ -13,7 +12,6 @@ const {
 router.get('/:matchId', getMatchById);
 router.put('/:matchId/status', updateMatchStatus);
 
-router.post('/:matchId/player-scores', addPlayerScoreInMatch);
 router.get('/:matchId/player-scores', getPlayersMatchScore);
 
 router.post('/:matchId/team-scores', addTeamScoreInMatch);

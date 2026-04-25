@@ -16,6 +16,10 @@ const { toCamelCase } = require('./utils/helpers');
 
 // Import routes
 const tournamentRoutes = require('./routes/tournaments');
+const registrationRoutes = require('./routes/registration');
+const scheduleRoutes = require('./routes/schedule');
+const scoringRoutes = require('./routes/scoring');
+const standingsRoutes = require('./routes/standings');
 const teamRoutes = require('./routes/teams');
 const playerRoutes = require('./routes/players');
 const sessionRoutes = require('./routes/sessions');
@@ -23,7 +27,6 @@ const matchRoutes = require('./routes/matches');
 const playerStatisticsRoutes = require('./routes/playerStatistics');
 const teamStatisticsRoutes = require('./routes/teamStatistics');
 const leagueRoutes = require('./routes/leagues');
-const leagueDayRoutes = require('./routes/leagueDays');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
@@ -73,23 +76,15 @@ const outputFormatter = (req, res, next) => {
     next();
 };
 
-// API Routes
-// Uncomment the three lines below to enforce JWT authentication on all endpoints.
-// requirePlayer resolves the JWT player_id claim to a players row.
-// requireTeamContext validates team membership and sets req.teamId for RLS-scoped writes.
-// app.use('/api', jwtCheck);
-// app.use('/api', requirePlayer);
-// app.use('/api', requireTeamContext);
-
-// Health check endpoint
+// Health check endpoint (unauthenticated)
 app.get('/api/health', async (req, res) => {
   try {
     // Test database connection
     const result = await pool.query('SELECT NOW() as server_time, version() as postgres_version');
     const dbStatus = result.rows[0];
-    
-    res.json({ 
-      status: 'OK', 
+
+    res.json({
+      status: 'OK',
       timestamp: new Date(),
       message: 'Bowling Tournament API is running',
       database: {
@@ -111,7 +106,19 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// JWT authentication + player resolution + team RLS context
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/api', jwtCheck);
+  app.use('/api', requirePlayer);
+  app.use('/api', requireTeamContext);
+}
+
+// API Routes
 app.use('/api/tournaments', outputFormatter, tournamentRoutes);
+app.use('/api/tournaments', outputFormatter, registrationRoutes);
+app.use('/api/tournaments', outputFormatter, scheduleRoutes);
+app.use('/api/tournaments', outputFormatter, scoringRoutes);
+app.use('/api/tournaments', outputFormatter, standingsRoutes);
 app.use('/api/teams', outputFormatter, teamRoutes);
 app.use('/api/players', outputFormatter, playerRoutes);
 app.use('/api/sessions', outputFormatter, sessionRoutes);
@@ -119,7 +126,6 @@ app.use('/api/matches', outputFormatter, matchRoutes);
 app.use('/api/player-statistics', outputFormatter, playerStatisticsRoutes);
 app.use('/api/team-statistics', outputFormatter, teamStatisticsRoutes);
 app.use('/api/leagues', outputFormatter, leagueRoutes);
-app.use('/api/league-days', outputFormatter, leagueDayRoutes);
 
 
 
