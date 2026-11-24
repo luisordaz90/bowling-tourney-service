@@ -16,7 +16,7 @@ const pool = new Pool({
 
 // ── JSON data ────────────────────────────────────────────────────────────────
 
-const resultsPath = path.resolve(__dirname, '..', '..', '..', 'Desktop', 'tournament_results.json');
+const resultsPath = path.resolve(__dirname, 'data', 'tournament_results.json');
 const data = JSON.parse(fs.readFileSync(resultsPath, 'utf-8'));
 
 // ── pdfId → name from seed-patorneo.js TEAMS ────────────────────────────────
