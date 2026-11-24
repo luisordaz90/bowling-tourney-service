@@ -118,7 +118,7 @@ const removeTeamFromTournament = async (req, res) => {
       [tournamentId, teamId]
     );
 
-    res.json({ message: 'Team removed from tournament successfully' });
+    res.status(204).send();
   } catch (error) {
     console.error('Error removing team from tournament:', error);
     res.status(500).json({ error: 'Failed to remove team from tournament' });
@@ -198,7 +198,7 @@ const registerPlayerToTeamInTournament = async (req, res) => {
 const getRegisteredPlayersInRegisteredTeamInTournament = async (req, res) => {
   try {
     const result = await query(
-      `SELECT tp.*, p.name, p.email, p.phone, p.handicap, p.average_score, p.total_games_played, p.total_pins
+      `SELECT tp.*, p.name, p.email, p.phone
        FROM team_players tp
        JOIN players p ON tp.player_id = p.id
        WHERE tp.tournament_id = $1 AND tp.team_id = $2 AND tp.is_active = true
@@ -220,10 +220,6 @@ const getRegisteredPlayersInRegisteredTeamInTournament = async (req, res) => {
         name: row.name,
         email: row.email,
         phone: row.phone,
-        handicap: row.handicap,
-        averageScore: parseFloat(row.average_score),
-        totalGamesPlayed: row.total_games_played,
-        totalPins: row.total_pins
       }
     }));
 

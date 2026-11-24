@@ -1,6 +1,6 @@
 // tests/leagues.test.js
 // Integration tests for the league domain.
-// Verifies: create league, list leagues (including seeded data), create edition, assignment validation.
+// Verifies: create league, list leagues (including seeded data), assignment validation.
 const request = require('supertest');
 const app = require('../server');
 const { closePool } = require('../config/database');
@@ -19,8 +19,7 @@ describe('League management', () => {
       .send({
         name: 'Test Summer League 2026',
         description: 'Created by integration test',
-        maxTeamsPerEdition: 12,
-        sessionType: 'weekly',
+        maxTeamsPerTournament: 12,
       });
 
     expect(res.status).toBe(201);
@@ -37,26 +36,6 @@ describe('League management', () => {
     const names = res.body.map(l => l.name);
     expect(names).toContain('Main Bowling League');
     expect(names).toContain('Youth League');
-  });
-});
-
-describe('Tournament edition management', () => {
-  it('creates an edition for a league and returns 201', async () => {
-    const res = await request(app)
-      .post(`/api/leagues/${leagueId}/editions`)
-      .send({
-        leagueId,
-        name: 'Spring 2026',
-        year: 2026,
-        season: 'spring',
-        startDate: '2026-04-01',
-        endDate: '2026-06-30',
-        maxTeams: 8,
-      });
-
-    expect(res.status).toBe(201);
-    expect(res.body).toHaveProperty('id');
-    expect(res.body).toHaveProperty('leagueId', leagueId);
   });
 });
 

@@ -20,7 +20,7 @@ const registerSessionToTournament = async (req, res) => {
 
       // Check if session number already exists for this tournament
       const existingResult = await client.query(
-        'SELECT id FROM league_sessions WHERE tournament_id = $1 AND session_number = $2',
+        'SELECT id FROM tournament_sessions WHERE tournament_id = $1 AND session_number = $2',
         [req.params.tournamentId, parseInt(sessionNumber)]
       );
       if (existingResult.rows.length > 0) {
@@ -29,7 +29,7 @@ const registerSessionToTournament = async (req, res) => {
 
       // Create league session
       const result = await client.query(
-        `INSERT INTO league_sessions (tournament_id, session_number, session_name, session_date, notes)
+        `INSERT INTO tournament_sessions (tournament_id, session_number, session_name, session_date, notes)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
         [req.params.tournamentId, parseInt(sessionNumber), sessionName || `Session ${sessionNumber}`, new Date(sessionDate), notes || null]
@@ -60,7 +60,7 @@ const getSessionsForTournament = async (req, res) => {
               COUNT(CASE WHEN m.status = 'completed' THEN 1 END) as completed_matches,
               COUNT(CASE WHEN m.status = 'scheduled' THEN 1 END) as scheduled_matches,
               COUNT(CASE WHEN m.status = 'in_progress' THEN 1 END) as in_progress_matches
-       FROM league_sessions ls
+       FROM tournament_sessions ls
        LEFT JOIN matches m ON ls.id = m.session_id
        WHERE ls.tournament_id = $1
        GROUP BY ls.id
@@ -93,7 +93,7 @@ const updateSessionStatus = async (req, res) => {
     }
 
     const result = await query(
-      `UPDATE league_sessions SET status = $1 WHERE id = $2 RETURNING *`,
+      `UPDATE tournament_sessions SET status = $1 WHERE id = $2 RETURNING *`,
       [status, req.params.id]
     );
 
@@ -192,7 +192,7 @@ const getTournamentSchedule = async (req, res) => {
        FROM matches m
        JOIN teams ht ON m.home_team_id = ht.id
        JOIN teams at ON m.away_team_id = at.id
-       LEFT JOIN league_sessions ls ON m.session_id = ls.id
+       LEFT JOIN tournament_sessions ls ON m.session_id = ls.id
        WHERE m.tournament_id = $1
        ORDER BY m.session_number NULLS LAST, m.created_at`,
       [req.params.tournamentId]
@@ -202,7 +202,7 @@ const getTournamentSchedule = async (req, res) => {
 
     // Get tournament sessions
     const sessionsResult = await query(
-      'SELECT * FROM league_sessions WHERE tournament_id = $1 ORDER BY session_number',
+      'SELECT * FROM tournament_sessions WHERE tournament_id = $1 ORDER BY session_number',
       [req.params.tournamentId]
     );
     const tournamentSessions = sessionsResult.rows;
@@ -382,7 +382,7 @@ const validateTournamentSchedule = async (req, res) => {
 
     const expectedTeamsPerSession = totalTeams % 2 === 0 ? totalTeams : totalTeams - 1;
 
-    Object.keys(sessionGroups).forEach(sessionKey => {
+    for (const sessionKey of Object.keys(sessionGroups)) {
       const session = sessionGroups[sessionKey];
 
       // Check if all teams are playing in this session (except bye team)
@@ -404,7 +404,7 @@ const validateTournamentSchedule = async (req, res) => {
         teamMatchCount[match.away_team_id] = (teamMatchCount[match.away_team_id] || 0) + 1;
       });
 
-      Object.keys(teamMatchCount).forEach(async (teamId) => {
+      for (const teamId of Object.keys(teamMatchCount)) {
         if (teamMatchCount[teamId] > 1) {
           const teamResult = await query('SELECT name FROM teams WHERE id = $1', [teamId]);
           const teamName = teamResult.rows[0]?.name || teamId;
@@ -418,14 +418,14 @@ const validateTournamentSchedule = async (req, res) => {
           });
           validationResults.isValid = false;
         }
-      });
-    });
+      }
+    }
 
     // Validate matchup uniqueness
     const allMatchups = new Set();
     const duplicateMatchups = [];
 
-    tournamentMatches.forEach(async (match) => {
+    for (const match of tournamentMatches) {
       const matchup = [match.home_team_id, match.away_team_id].sort().join('-');
       if (allMatchups.has(matchup)) {
         const homeTeamResult = await query('SELECT name FROM teams WHERE id = $1', [match.home_team_id]);
@@ -437,7 +437,7 @@ const validateTournamentSchedule = async (req, res) => {
         });
       }
       allMatchups.add(matchup);
-    });
+    }
 
     if (duplicateMatchups.length > 0) {
       validationResults.issues.push({
@@ -588,7 +588,7 @@ const getAllMatchesForTournament = async (req, res) => {
        JOIN teams ht ON m.home_team_id = ht.id
        JOIN teams at ON m.away_team_id = at.id
        LEFT JOIN teams wt ON m.winner_team_id = wt.id
-       LEFT JOIN league_sessions ls ON m.session_id = ls.id
+       LEFT JOIN tournament_sessions ls ON m.session_id = ls.id
        WHERE m.tournament_id = $1
        ORDER BY m.session_number NULLS LAST, m.match_date NULLS LAST, m.created_at`,
       [req.params.tournamentId]
@@ -658,7 +658,7 @@ const deleteTournamentSchedule = async (req, res) => {
 
       // Remove auto-generated sessions (those with notes containing "Automatically generated")
       const removedSessionsResult = await client.query(
-        `DELETE FROM league_sessions
+        `DELETE FROM tournament_sessions
          WHERE tournament_id = $1 AND notes LIKE '%Automatically generated%'
          RETURNING id`,
         [req.params.tournamentId]
@@ -755,7 +755,7 @@ const generateMatches = async (req, res) => {
 
         // Create session if it doesn't exist
         const sessionResult = await client.query(
-          `INSERT INTO league_sessions (tournament_id, session_number, session_name, session_date, notes)
+          `INSERT INTO tournament_sessions (tournament_id, session_number, session_name, session_date, notes)
            VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT (tournament_id, session_number) DO UPDATE SET
            session_date = EXCLUDED.session_date,

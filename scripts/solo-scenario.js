@@ -46,13 +46,14 @@ async function main() {
   const tRes = await sql(
     `INSERT INTO tournaments
        (name, start_date, end_date, max_teams, total_sessions, session_type,
-        schedule_type, ranking_method, hdcp_base, hdcp_percentage, games_per_session)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        schedule_type, ranking_method,
+        scoring_config)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      RETURNING *`,
     ['Solo Open Classic 2026',
      '2026-03-01', '2026-06-30',
      1, 10, 'weekly', 'open', 'pins',
-     220, 0.90, 3]
+     JSON.stringify({games_per_session:3,handicap:{base_score:220,percentage:90,floor:0,cap:null},points:{per_game_win:1,per_game_tie:0.5,per_series_win:1,per_series_tie:0.5,bonus_categories:[],per_bonus:1}})]
   );
   const tournament = tRes.rows[0];
   const tId = tournament.id;
@@ -76,7 +77,7 @@ async function main() {
     const d = new Date('2026-03-01');
     d.setDate(d.getDate() + (i - 1) * 7);
     const r = await sql(
-      `INSERT INTO league_sessions (tournament_id, session_number, session_name, session_date)
+      `INSERT INTO tournament_sessions (tournament_id, session_number, session_name, session_date)
        VALUES ($1,$2,$3,$4) RETURNING *`,
       [tId, i, `Week ${i}`, d.toISOString().slice(0, 10)]
     );

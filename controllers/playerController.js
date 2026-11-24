@@ -1,41 +1,72 @@
 // controllers/playerController.js
+const { randomUUID } = require('crypto');
 const { query, withTransaction } = require('../config/database');
 const { toCamelCase } = require('../utils/helpers');
+const management = require('../config/auth0-management');
+const logger = require('../config/logger');
 
 const createPlayer = async (req, res) => {
   try {
-    const { name, email, phone, handicap } = req.body;
-    
+    const { name, email, phone } = req.body;
+
     if (!name) {
       return res.status(400).json({ error: 'Player name is required' });
     }
 
-    // Validate email format if provided
-    if (email) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({ error: 'Invalid email format' });
-      }
+    if (!email) {
+      return res.status(400).json({ error: 'Player email is required for invitation' });
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    const playerId = randomUUID();
+
+    // Step 1: Create Auth0 user with player_id in app_metadata
+    const auth0User = await management.users.create({
+      connection: process.env.AUTH0_DB_CONNECTION || 'Username-Password-Authentication',
+      email,
+      name,
+      password: randomUUID() + 'Aa1!', // random throwaway, meets complexity reqs
+      email_verified: true,
+      verify_email: false,
+      app_metadata: { player_id: playerId },
+    });
+
+    const auth0UserId = auth0User.data.user_id;
+
+    // Step 2: Trigger password reset email (acts as invitation)
+    const auth0Domain = process.env.AUTH0_DOMAIN;
+    await fetch(`https://${auth0Domain}/dbconnections/change_password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: process.env.AUTH0_CLIENT_ID,
+        email,
+        connection: process.env.AUTH0_DB_CONNECTION || 'Username-Password-Authentication',
+      }),
+    });
+
+    // Step 3: Insert player record with invited status
     const result = await query(
-      `INSERT INTO players (name, email, phone, handicap)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO players (id, name, email, phone, status, auth0_user_id)
+       VALUES ($1, $2, $3, $4, 'invited', $5)
        RETURNING *`,
-      [name, email || null, phone || null, handicap ? parseInt(handicap) : 0]
+      [playerId, name, email, phone || null, auth0UserId]
     );
 
     res.status(201).json(toCamelCase(result.rows[0]));
   } catch (error) {
-    console.error('Error creating player:', error);
-    
-    // Handle unique constraint violations
+    logger.error({ err: error, message: error.message }, 'Error creating player');
+
     if (error.code === '23505') {
       if (error.constraint === 'players_email_key') {
         return res.status(400).json({ error: 'Email already exists' });
       }
     }
-    
+
     res.status(500).json({ error: 'Failed to create player' });
   }
 };
@@ -67,7 +98,7 @@ const getPlayerById = async (req, res) => {
 
 const updatePlayer = async (req, res) => {
   try {
-    const { name, email, phone, handicap } = req.body;
+    const { name, email, phone } = req.body;
 
     // Validate email format if provided
     if (email) {
@@ -92,10 +123,6 @@ const updatePlayer = async (req, res) => {
     if (phone !== undefined) {
       updateFields.push(`phone = $${paramCounter++}`);
       updateValues.push(phone);
-    }
-    if (handicap !== undefined) {
-      updateFields.push(`handicap = $${paramCounter++}`);
-      updateValues.push(parseInt(handicap));
     }
 
     if (updateFields.length === 0) {
@@ -230,7 +257,7 @@ const getPlayerDashboard = async (req, res) => {
               ARRAY_AGG(s.score ORDER BY s.game_number) as scores,
               SUM(s.score) as total_pins
        FROM scores s
-       JOIN league_sessions ls ON s.session_id = ls.id
+       JOIN tournament_sessions ls ON s.session_id = ls.id
        JOIN tournaments t ON s.tournament_id = t.id
        WHERE s.player_id = $1
        GROUP BY s.session_id, s.tournament_id, s.team_id, s.match_id,

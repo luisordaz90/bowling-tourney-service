@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const authorize = require('../middleware/authorize');
 const {
   createTournament,
   getAllTournaments,
@@ -8,10 +9,10 @@ const {
   deleteTournament
 } = require('../controllers/tournamentController');
 
-router.post('/', createTournament);
+router.post('/', authorize('tournament:create'), createTournament);
 router.get('/', getAllTournaments);
 router.get('/:id', getTournamentById);
-router.put('/:id', updateTournament);
-router.delete('/:id', deleteTournament);
+router.put('/:id', authorize('tournament:update'), updateTournament);
+router.delete('/:id', authorize('tournament:delete'), deleteTournament);
 
 module.exports = router;

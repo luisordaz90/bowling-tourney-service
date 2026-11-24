@@ -11,8 +11,13 @@ let homePlayerId;
 let awayPlayerId;
 let matchId;
 let sessionNumber;
+let leagueId;
 
 beforeAll(async () => {
+  // Fetch a seeded league
+  const leaguesRes = await request(app).get('/api/leagues');
+  leagueId = leaguesRes.body[0].id;
+
   // Create two teams
   const homeTeamRes = await request(app)
     .post('/api/teams')
@@ -45,6 +50,8 @@ beforeAll(async () => {
       maxTeams: 4,
       totalSessions: 2,
       sessionType: 'weekly',
+      leagueId,
+      lineupSize: 1,
     });
   tournamentId = tourneyRes.body.id;
 

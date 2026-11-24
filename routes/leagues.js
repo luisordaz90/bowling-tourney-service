@@ -1,28 +1,28 @@
 const express = require('express');
 const router = express.Router();
+const authorize = require('../middleware/authorize');
 const {
   createLeague,
   getLeagues,
   getLeagueById,
   updateLeague,
-  createTournamentEdition,
-  getLeagueEditions,
-  getTournamentEditionById,
   validatePlayerTeamAssignment,
-  getPlayerLeagueHistory,
   getLeagueViolations
 } = require('../controllers/leagueController');
+const {
+  assignLeagueAdmin,
+  removeLeagueAdmin
+} = require('../controllers/leagueAdminController');
 
 // League management routes
-router.post('/', createLeague);
+router.post('/', authorize('league:create'), createLeague);
 router.get('/', getLeagues);
 router.get('/:id', getLeagueById);
-router.put('/:id', updateLeague);
+router.put('/:id', authorize('league:update'), updateLeague);
 
-// Tournament edition routes
-router.post('/:leagueId/editions', createTournamentEdition);
-router.get('/:leagueId/editions', getLeagueEditions);
-router.get('/:leagueId/editions/:editionId', getTournamentEditionById);
+// League admin management (superadmin only)
+router.post('/:leagueId/admins', authorize('league:admin:manage'), assignLeagueAdmin);
+router.delete('/:leagueId/admins/:playerId', authorize('league:admin:manage'), removeLeagueAdmin);
 
 // Validation and eligibility routes
 router.post('/validate-assignment', validatePlayerTeamAssignment);

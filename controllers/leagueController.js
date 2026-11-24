@@ -131,125 +131,6 @@ const updateLeague = async (req, res) => {
   }
 };
 
-// Tournament Edition Management
-
-const createTournamentEdition = async (req, res) => {
-  try {
-    const { leagueId, name, season, year, startDate, endDate, maxTeams, totalSessions, sessionType } = req.body;
-    
-    if (!leagueId || !name || !year || !startDate || !endDate) {
-      return res.status(400).json({ 
-        error: 'League ID, name, year, start date, and end date are required' 
-      });
-    }
-
-    await withTransaction(async (client) => {
-      // Verify league exists
-      const leagueResult = await client.query('SELECT id FROM leagues WHERE id = $1', [leagueId]);
-      if (leagueResult.rows.length === 0) {
-        throw new Error('League not found');
-      }
-
-      // Get the next edition number for this league
-      const editionNumberResult = await client.query(
-        'SELECT COALESCE(MAX(edition_number), 0) + 1 as next_edition FROM tournament_editions WHERE league_id = $1',
-        [leagueId]
-      );
-      const editionNumber = editionNumberResult.rows[0].next_edition;
-
-      // Create the tournament edition
-      const result = await client.query(
-        `INSERT INTO tournament_editions (
-          league_id, edition_number, name, season, year, start_date, end_date, 
-          max_teams, total_sessions, session_type
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING *`,
-        [
-          leagueId, editionNumber, name, season || null, parseInt(year),
-          new Date(startDate), new Date(endDate), maxTeams || null,
-          totalSessions || 1, sessionType || 'weekly'
-        ]
-      );
-
-      res.status(201).json(toCamelCase(result.rows[0]));
-    });
-  } catch (error) {
-    console.error('Error creating tournament edition:', error);
-    
-    if (error.message === 'League not found') {
-      return res.status(404).json({ error: error.message });
-    }
-    
-    if (error.code === '23505') {
-      if (error.constraint === 'tournament_editions_league_id_name_key') {
-        return res.status(400).json({ error: 'Edition name already exists in this league' });
-      }
-    }
-    
-    res.status(500).json({ error: 'Failed to create tournament edition' });
-  }
-};
-
-const getLeagueEditions = async (req, res) => {
-  try {
-    const { year, season, status } = req.query;
-    
-    let queryText = `
-      SELECT te.*, l.name as league_name, l.league_type
-      FROM tournament_editions te
-      JOIN leagues l ON te.league_id = l.id
-      WHERE te.league_id = $1`;
-    
-    const queryParams = [req.params.leagueId];
-    let paramCounter = 2;
-    
-    if (year) {
-      queryText += ` AND te.year = $${paramCounter++}`;
-      queryParams.push(parseInt(year));
-    }
-    
-    if (season) {
-      queryText += ` AND te.season = $${paramCounter++}`;
-      queryParams.push(season);
-    }
-    
-    if (status) {
-      queryText += ` AND te.status = $${paramCounter++}`;
-      queryParams.push(status);
-    }
-    
-    queryText += ' ORDER BY te.year DESC, te.edition_number DESC';
-    
-    const result = await query(queryText, queryParams);
-    res.json(toCamelCase(result.rows));
-  } catch (error) {
-    console.error('Error fetching league editions:', error);
-    res.status(500).json({ error: 'Failed to fetch league editions' });
-  }
-};
-
-const getTournamentEditionById = async (req, res) => {
-  try {
-    const result = await query(
-      `SELECT te.*, l.name as league_name, l.league_type, l.description as league_description
-       FROM tournament_editions te
-       JOIN leagues l ON te.league_id = l.id
-       WHERE te.id = $1`,
-      [req.params.editionId]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Tournament edition not found' });
-    }
-    
-    res.json(toCamelCase(result.rows[0]));
-  } catch (error) {
-    console.error('Error fetching tournament edition:', error);
-    res.status(500).json({ error: 'Failed to fetch tournament edition' });
-  }
-};
-
 // Validation and Eligibility Endpoints
 
 const validatePlayerTeamAssignment = async (req, res) => {
@@ -278,12 +159,7 @@ const validatePlayerTeamAssignment = async (req, res) => {
       violations: [],
       warnings: []
     };
-    
-    // If no league is associated, assignment is valid
-    if (!tournament.league_id) {
-      return res.json(toCamelCase(validation));
-    }
-    
+
     // Check if player is already on another team in the same league
     const existingAssignmentResult = await query(
       `SELECT t.name as team_name, tournament.name as tournament_name
@@ -351,24 +227,22 @@ const getPlayerLeagueHistory = async (req, res) => {
     
     let queryText = `
       SELECT DISTINCT l.id as league_id, l.name as league_name, l.league_type,
-             te.id as edition_id, te.name as edition_name, te.year, te.season,
              t.id as team_id, t.name as team_name, tp.role, tp.joined_date, tp.left_date,
              tournament.id as tournament_id, tournament.name as tournament_name,
-             tournament.status as tournament_status
+             tournament.status as tournament_status, tournament.year, tournament.season
       FROM team_players tp
       JOIN teams t ON tp.team_id = t.id
       JOIN tournaments tournament ON tp.tournament_id = tournament.id
-      LEFT JOIN tournament_editions te ON tournament.edition_id = te.id
-      LEFT JOIN leagues l ON tournament.league_id = l.id
+      JOIN leagues l ON tournament.league_id = l.id
       WHERE tp.player_id = $1`;
-    
+
     const queryParams = [req.params.playerId];
-    
+
     if (!includeInactive || includeInactive === 'false') {
       queryText += ' AND tp.is_active = true';
     }
-    
-    queryText += ' ORDER BY te.year DESC, te.edition_number DESC, tp.joined_date DESC';
+
+    queryText += ' ORDER BY tournament.year DESC, tp.joined_date DESC';
     
     const result = await query(queryText, queryParams);
     res.json(toCamelCase(result.rows));
@@ -384,11 +258,10 @@ const getLeagueViolations = async (req, res) => {
     
     let queryText = `
       SELECT tlv.*, t.name as team_name, l.name as league_name,
-             te.name as edition_name, p.name as player_name
+             p.name as player_name
       FROM team_league_violations tlv
       JOIN teams t ON tlv.team_id = t.id
       JOIN leagues l ON tlv.league_id = l.id
-      LEFT JOIN tournament_editions te ON tlv.edition_id = te.id
       LEFT JOIN players p ON tlv.player_id = p.id
       WHERE tlv.league_id = $1`;
     
@@ -421,10 +294,6 @@ module.exports = {
   getLeagues,
   getLeagueById,
   updateLeague,
-  // Tournament edition management
-  createTournamentEdition,
-  getLeagueEditions,
-  getTournamentEditionById,
   // Validation and eligibility
   validatePlayerTeamAssignment,
   getPlayerLeagueHistory,

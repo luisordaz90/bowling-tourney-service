@@ -96,12 +96,12 @@ const getStatistics = async (req, res) => {
         (SELECT COUNT(*)   FROM scores WHERE tournament_id = $1) AS total_games,
         (SELECT COALESCE(MAX(score), 0) FROM scores WHERE tournament_id = $1) AS highest_game,
         (SELECT COALESCE(MAX(series_total), 0) FROM (
-           SELECT SUM(score) AS series_total
+           SELECT player_id, session_id, SUM(score) AS series_total
            FROM scores WHERE tournament_id = $1
-           GROUP BY COALESCE(match_id::TEXT, session_id::TEXT || player_id::TEXT)
+           GROUP BY player_id, session_id
          ) series_agg) AS highest_series,
         (SELECT COALESCE(ROUND(AVG(score)), 0) FROM scores WHERE tournament_id = $1) AS average_score,
-        (SELECT sessions_completed FROM tournaments WHERE id = $1) AS sessions_completed,
+        (SELECT COUNT(*) FROM tournament_sessions WHERE tournament_id = $1 AND status = 'completed') AS sessions_completed,
         (SELECT total_sessions     FROM tournaments WHERE id = $1) AS total_sessions,
         (SELECT COUNT(*) FROM matches WHERE tournament_id = $1) AS total_matches,
         (SELECT COUNT(*) FROM matches WHERE tournament_id = $1 AND status = 'completed') AS completed_matches,
@@ -391,7 +391,7 @@ const updatePlayerStatistics = async (req, res) => {
        highestGame || 0, highestSeries || 0, matchesPlayed || 0]
     );
 
-    return res.status(result.rows.length === 0 ? 201 : 200).json(result.rows[0]);
+    return res.status(200).json(result.rows[0]);
   } catch (error) {
     logger.error('Error updating player statistics:', error);
     res.status(500).json({ error: 'Failed to update player statistics' });
@@ -432,7 +432,7 @@ const updateTeamStatistics = async (req, res) => {
        pointsPercentage || 0, rankPosition || null]
     );
 
-    return res.status(result.rows.length === 0 ? 201 : 200).json(result.rows[0]);
+    return res.status(200).json(result.rows[0]);
   } catch (error) {
     logger.error('Error updating team statistics:', error);
     res.status(500).json({ error: 'Failed to update team statistics' });

@@ -4,6 +4,7 @@ require('dotenv').config({
 });
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const yaml = require('yaml');
 const swaggerUi = require('swagger-ui-express');
@@ -17,22 +18,31 @@ const { toCamelCase } = require('./utils/helpers');
 // Import routes
 const tournamentRoutes = require('./routes/tournaments');
 const registrationRoutes = require('./routes/registration');
+const registrationsRoutes = require('./routes/registrations');
 const scheduleRoutes = require('./routes/schedule');
 const scoringRoutes = require('./routes/scoring');
 const standingsRoutes = require('./routes/standings');
 const teamRoutes = require('./routes/teams');
 const playerRoutes = require('./routes/players');
 const sessionRoutes = require('./routes/sessions');
+const sessionsFlatRoutes = require('./routes/sessionsFlat');
+const scheduleFlatRoutes = require('./routes/scheduleFlat');
 const matchRoutes = require('./routes/matches');
+const scoresFlatRoutes = require('./routes/scoresFlat');
+const matchesFlatRoutes = require('./routes/matchesFlat');
+const standingsFlatRoutes = require('./routes/standingsFlat');
+const statisticsFlatRoutes = require('./routes/statisticsFlat');
 const playerStatisticsRoutes = require('./routes/playerStatistics');
 const teamStatisticsRoutes = require('./routes/teamStatistics');
 const leagueRoutes = require('./routes/leagues');
+const meRoutes = require('./routes/me');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const requestLogger = require('./middleware/requestLogger');
 const requirePlayer = require('./middleware/requirePlayer');
 const requireTeamContext = require('./middleware/requireTeamContext');
+const resolveRoles = require('./middleware/resolveRoles');
 const logger = require('./config/logger');
 
 const app = express();
@@ -46,11 +56,29 @@ const jwtCheck = auth({
 });
 
 // Basic middleware
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+
+const corsOrigin = process.env.CORS_ORIGIN;
+if (!corsOrigin && process.env.NODE_ENV === 'production') {
+  logger.error('CORS_ORIGIN must be set in production');
+  process.exit(1);
+}
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: corsOrigin || '*',
   credentials: true
 }));
+
+// Rate limiting (disabled in test environment)
+if (process.env.NODE_ENV !== 'test') {
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' }
+  });
+  app.use('/api', apiLimiter);
+}
 
 // Request logging middleware
 app.use(requestLogger);
@@ -107,22 +135,33 @@ app.get('/api/health', async (req, res) => {
 });
 
 // JWT authentication + player resolution + team RLS context
-if (process.env.NODE_ENV !== 'test') {
+// TEMPORARY: SKIP_AUTH=true bypasses JWT for local testing (remove before production)
+if (process.env.NODE_ENV !== 'test' && !process.env.SKIP_AUTH) {
   app.use('/api', jwtCheck);
   app.use('/api', requirePlayer);
   app.use('/api', requireTeamContext);
 }
+// Role resolution runs in all environments (uses header fallback in test)
+app.use('/api', resolveRoles);
 
 // API Routes
 app.use('/api/tournaments', outputFormatter, tournamentRoutes);
+app.use('/api/registrations', outputFormatter, registrationsRoutes);
 app.use('/api/tournaments', outputFormatter, registrationRoutes);
 app.use('/api/tournaments', outputFormatter, scheduleRoutes);
 app.use('/api/tournaments', outputFormatter, scoringRoutes);
 app.use('/api/tournaments', outputFormatter, standingsRoutes);
+app.use('/api/me', outputFormatter, meRoutes);
 app.use('/api/teams', outputFormatter, teamRoutes);
 app.use('/api/players', outputFormatter, playerRoutes);
-app.use('/api/sessions', outputFormatter, sessionRoutes);
-app.use('/api/matches', outputFormatter, matchRoutes);
+app.use('/api/sessions', outputFormatter, sessionsFlatRoutes);
+app.use('/api/schedule', outputFormatter, scheduleFlatRoutes);
+app.use('/api/scores', outputFormatter, scoresFlatRoutes);
+app.use('/api/matches', outputFormatter, matchesFlatRoutes);
+app.use('/api/standings', outputFormatter, standingsFlatRoutes);
+app.use('/api/statistics', outputFormatter, statisticsFlatRoutes);
+app.use('/api/sessions', outputFormatter, sessionRoutes); // legacy PUT /:id/status
+app.use('/api/matches', outputFormatter, matchRoutes); // legacy match routes
 app.use('/api/player-statistics', outputFormatter, playerStatisticsRoutes);
 app.use('/api/team-statistics', outputFormatter, teamStatisticsRoutes);
 app.use('/api/leagues', outputFormatter, leagueRoutes);

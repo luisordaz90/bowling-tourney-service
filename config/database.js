@@ -11,8 +11,8 @@
 const { Pool } = require('pg');
 const { AsyncLocalStorage } = require('async_hooks');
 
-// Stores the team-scoped DB client for the duration of a request.
-// Set by requireTeamContext middleware; read by withTransaction.
+// Stores the team ID for the duration of a request so that withTransaction
+// can apply SET LOCAL for RLS. Set by requireTeamContext middleware.
 const requestContext = new AsyncLocalStorage();
 
 const dbConfig = {
@@ -48,59 +48,25 @@ const query = async (text, params) => {
   }
 };
 
-const getClient = async () => pool.connect();
-
 // Transaction helper.
 //
-// If requireTeamContext middleware is active for this request it will have
-// stored a team-scoped client in requestContext. That client already has an
-// open transaction with SET LOCAL app.current_team_id, so we reuse it and
-// skip BEGIN/COMMIT/ROLLBACK — the middleware owns the lifecycle.
-//
-// Without middleware context a fresh client + transaction is created here.
+// Always creates a fresh client + transaction with proper COMMIT/ROLLBACK.
+// If requireTeamContext set a teamId in requestContext, SET LOCAL is applied
+// so RLS policies see the correct team scope.
 const withTransaction = async (callback) => {
-  const contextClient = requestContext.getStore()?.client;
-  if (contextClient) {
-    return callback(contextClient);
-  }
+  const teamId = requestContext.getStore()?.teamId;
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (teamId) {
+      await client.query(`SET LOCAL app.current_team_id = '${teamId}'`);
+    }
     const result = await callback(client);
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-};
-
-// Transaction with RLS team context.
-//
-// Sets the transaction-scoped variable app.current_team_id before running the
-// callback. PostgreSQL RLS policies on team-owned tables read this variable via:
-//   current_setting('app.current_team_id', true)
-//
-// SET LOCAL automatically resets on COMMIT/ROLLBACK, so the value never leaks
-// across requests even when connections are reused from the pool.
-//
-// Usage:
-//   await withTeamContext(req.teamId, async (client) => {
-//     await client.query('INSERT INTO team_players ...', [...]);
-//   });
-const withTeamContext = async (teamId, callback) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_team_id = $1', [teamId]);
-    const result = await callback(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
     client.release();
@@ -118,9 +84,7 @@ const closePool = async () => {
 
 module.exports = {
   query,
-  getClient,
   withTransaction,
-  withTeamContext,
   requestContext,
   pool,
   closePool,

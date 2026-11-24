@@ -4,8 +4,8 @@ const { getTeamById, updateTeam, getTeams, createTeam, deleteTeam } = require('.
 
 router.get('/', getTeams);
 router.post('/', createTeam);
-router.get('/:id', getTeamById);
-router.put('/:id', updateTeam);
-router.delete('/:id', deleteTeam);
+router.get('/:teamId', getTeamById);
+router.put('/:teamId', updateTeam);
+router.delete('/:teamId', deleteTeam);
 
 module.exports = router;

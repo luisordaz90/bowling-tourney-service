@@ -10,14 +10,14 @@ const { validateScore } = require('../utils/helpers');
 
 async function lookupTournamentAndSession(tournamentId, sessionNumber) {
   const tournamentResult = await query(
-    'SELECT id, schedule_type, games_per_session FROM tournaments WHERE id = $1',
+    'SELECT id, schedule_type, (scoring_config->>\'games_per_session\')::int AS games_per_session, lineup_size FROM tournaments WHERE id = $1',
     [tournamentId]
   );
   if (tournamentResult.rows.length === 0) return { error: 'Tournament not found', status: 404 };
   const tournament = tournamentResult.rows[0];
 
   const sessionResult = await query(
-    'SELECT id FROM league_sessions WHERE tournament_id = $1 AND session_number = $2',
+    'SELECT id FROM tournament_sessions WHERE tournament_id = $1 AND session_number = $2',
     [tournamentId, sessionNumber]
   );
   if (sessionResult.rows.length === 0) return { error: 'Session not found', status: 404 };
@@ -251,7 +251,7 @@ const submitScore = async (req, res) => {
     const lookup = await lookupTournamentAndSession(tournamentId, sessionNumber);
     if (lookup.error) return res.status(lookup.status).json({ error: lookup.error });
     const { tournament, sessionId } = lookup;
-    const { schedule_type, games_per_session } = tournament;
+    const { schedule_type, games_per_session, lineup_size } = tournament;
 
     if (scores.length !== games_per_session) {
       return res.status(400).json({ error: `Expected ${games_per_session} scores, got ${scores.length}` });
@@ -320,12 +320,25 @@ const submitScore = async (req, res) => {
 
     let responsePayload;
 
+    const { tryStartMatch, tryCompleteMatch, tryTransitionSession } = require('../utils/matchLifecycle');
+
     await withTransaction(async (client) => {
       const match = await resolveMatch(client, sessionId, teamId);
 
       const playerResult = await client.query('SELECT id FROM players WHERE id = $1', [playerId]);
       if (playerResult.rows.length === 0) {
         throw Object.assign(new Error('Player not found'), { status: 404 });
+      }
+
+      // Validate that the scored player is an active member of this team
+      const rosterCheck = await client.query(
+        `SELECT 1 FROM team_players
+         WHERE player_id = $1 AND team_id = $2 AND tournament_id = $3 AND is_active = true
+         LIMIT 1`,
+        [playerId, teamId, tournamentId]
+      );
+      if (rosterCheck.rows.length === 0) {
+        throw Object.assign(new Error('Player is not an active member of this team in this tournament'), { status: 400 });
       }
 
       const existing = await client.query(
@@ -358,6 +371,11 @@ const submitScore = async (req, res) => {
 
       // Player statistics (games, pins, average) handled by DB trigger (trg_recalculate_hdcp)
 
+      // Auto-transition match and session status
+      await tryStartMatch(client, match.id);
+      const { matchCompleted } = await tryCompleteMatch(client, match.id, tournamentId, games_per_session, lineup_size);
+      await tryTransitionSession(client, sessionId);
+
       const rawTotal = scores.reduce((s, g) => s + g, 0);
       const totalPins = rawTotal + handicapApplied * games_per_session;
       responsePayload = {
@@ -372,6 +390,7 @@ const submitScore = async (req, res) => {
         handicapApplied,
         totalPins,
         sessionAverage: rawTotal / games_per_session,
+        matchCompleted,
         recordedAt: firstRow.recorded_at
       };
     });
@@ -413,7 +432,7 @@ const getScores = async (req, res) => {
            MIN(s.recorded_at)                                  AS recorded_at,
            ARRAY_AGG(s.score ORDER BY s.game_number)           AS scores
          FROM   scores s
-         JOIN   league_sessions ls ON s.session_id  = ls.id
+         JOIN   tournament_sessions ls ON s.session_id  = ls.id
          JOIN   players          p  ON s.player_id  = p.id
          LEFT JOIN teams         t  ON s.team_id    = t.id
          WHERE  s.tournament_id  = $1
@@ -451,7 +470,7 @@ const getScores = async (req, res) => {
          MIN(s.recorded_at)                                  AS recorded_at,
          ARRAY_AGG(s.score ORDER BY s.game_number)           AS scores
        FROM   scores s
-       JOIN   league_sessions ls ON s.session_id  = ls.id
+       JOIN   tournament_sessions ls ON s.session_id  = ls.id
        JOIN   players          p  ON s.player_id  = p.id
        JOIN   teams             t  ON s.team_id   = t.id
        WHERE  s.tournament_id   = $1
@@ -498,7 +517,7 @@ const updateScore = async (req, res) => {
     const lookup = await lookupTournamentAndSession(tournamentId, sessionNumber);
     if (lookup.error) return res.status(lookup.status).json({ error: lookup.error });
     const { tournament, sessionId } = lookup;
-    const { schedule_type, games_per_session } = tournament;
+    const { schedule_type, games_per_session, lineup_size } = tournament;
 
     if (scores.length !== games_per_session) {
       return res.status(400).json({ error: `Expected ${games_per_session} scores, got ${scores.length}` });
@@ -550,7 +569,7 @@ const updateScore = async (req, res) => {
         }
 
         const matchResult = await client.query(
-          `SELECT m.*, t.games_per_session
+          `SELECT m.*, (t.scoring_config->>'games_per_session')::int AS games_per_session
            FROM matches m
            JOIN tournaments t ON m.tournament_id = t.id
            WHERE m.session_id = $1 AND (m.home_team_id = $2 OR m.away_team_id = $2)`,
@@ -617,7 +636,7 @@ const deleteScore = async (req, res) => {
     const lookup = await lookupTournamentAndSession(tournamentId, sessionNumber);
     if (lookup.error) return res.status(lookup.status).json({ error: lookup.error });
     const { tournament, sessionId } = lookup;
-    const { schedule_type, games_per_session } = tournament;
+    const { schedule_type, games_per_session, lineup_size } = tournament;
 
     await withTransaction(async (client) => {
       if (schedule_type === 'open') {

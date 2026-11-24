@@ -22,7 +22,13 @@ const P1_TOTAL  = P1_RAW + P1_HDCP * 3; // 648
 const P2_SCORES = [210, 210, 210];
 const P2_RAW    = 630;
 
+let leagueId;
+
 beforeAll(async () => {
+  // Fetch a seeded league
+  const leaguesRes = await request(app).get('/api/leagues');
+  leagueId = leaguesRes.body[0].id;
+
   // Players
   const p1Res = await request(app).post('/api/players')
     .send({ name: 'Solo Player One', email: 'solo.one@test.com' });
@@ -49,6 +55,7 @@ beforeAll(async () => {
       maxTeams: 8, totalSessions: 4, sessionType: 'weekly',
       scheduleType: 'open', rankingMethod: 'pins',
       hdcpBase: 220, hdcpPercentage: 0.90,
+      leagueId,
     });
   tournamentId = tRes.body.id;
 
@@ -58,6 +65,7 @@ beforeAll(async () => {
       name: 'Matchplay Bowl 2026',
       startDate: '2026-04-01', endDate: '2026-06-30',
       maxTeams: 8, totalSessions: 4, sessionType: 'weekly',
+      leagueId,
     });
   matchplayTournamentId = mpRes.body.id;
 

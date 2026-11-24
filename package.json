@@ -8,14 +8,17 @@
     "dev": "nodemon server.js",
     "db:migrate": "node db/run-migrations.js",
     "db:setup-user": "node db/setup-app-user.js",
-    "test": "vitest run --reporter=verbose"
+    "test": "vitest run --reporter=verbose",
+    "db:seed": "node db/seed.js",
+    "db:seed:patorneo": "node db/seed-patorneo.js"
   },
   "dependencies": {
-    "@auth0/nextjs-auth0": "^4.6.1",
+    "auth0": "^4.37.1",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^4.18.2",
     "express-oauth2-jwt-bearer": "^1.6.1",
+    "express-rate-limit": "^8.7.4",
     "pg": "^8.16.0",
     "pino": "^9.7.0",
     "pino-pretty": "^13.1.1",

@@ -7,8 +7,13 @@ const app = require('../server');
 // Shared state populated by setup
 let teamId;
 let tournamentId;
+let leagueId;
 
 beforeAll(async () => {
+  // Fetch a seeded league
+  const leaguesRes = await request(app).get('/api/leagues');
+  leagueId = leaguesRes.body[0].id;
+
   // Create a team to use across tournament tests
   const teamRes = await request(app)
     .post('/api/teams')
@@ -31,6 +36,7 @@ describe('Tournament creation', () => {
         maxTeams: 8,
         totalSessions: 7,
         sessionType: 'weekly',
+        leagueId,
       });
 
     expect(res.status).toBe(201);

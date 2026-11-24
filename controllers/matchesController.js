@@ -14,7 +14,7 @@ const getMatchById = async (req, res) => {
        JOIN teams ht ON m.home_team_id = ht.id
        JOIN teams at ON m.away_team_id = at.id
        LEFT JOIN teams wt ON m.winner_team_id = wt.id
-       LEFT JOIN league_sessions ls ON m.session_id = ls.id
+       LEFT JOIN tournament_sessions ls ON m.session_id = ls.id
        LEFT JOIN match_points mp ON m.id = mp.match_id
        JOIN tournaments t ON m.tournament_id = t.id
        WHERE m.id = $1`,
@@ -85,11 +85,9 @@ const getPlayersMatchScore = async (req, res) => {
          s.team_id,
          p.name                                               AS player_name,
          t.name                                               AS team_name,
-         MAX(CASE WHEN s.game_number = 1 THEN s.score END)   AS game1_score,
-         MAX(CASE WHEN s.game_number = 2 THEN s.score END)   AS game2_score,
-         MAX(CASE WHEN s.game_number = 3 THEN s.score END)   AS game3_score,
-         MAX(s.handicap_applied)                             AS handicap_applied,
-         MIN(s.recorded_at)                                  AS created_at
+         JSON_AGG(JSON_BUILD_OBJECT('gameNumber', s.game_number, 'score', s.score) ORDER BY s.game_number) AS scores,
+         MAX(s.handicap_applied)                              AS handicap_applied,
+         MIN(s.recorded_at)                                   AS created_at
        FROM scores s
        JOIN players p ON s.player_id = p.id
        JOIN teams   t ON s.team_id   = t.id
@@ -115,9 +113,11 @@ const calculateTeamScoreInMatch = async (req, res) => {
       return res.status(400).json({ error: 'Team ID is required' });
     }
 
+    const { tryCompleteMatch } = require('../utils/matchLifecycle');
+
     await withTransaction(async (client) => {
       const matchResult = await client.query(
-        `SELECT m.*, t.games_per_session
+        `SELECT m.*, (t.scoring_config->>'games_per_session')::int AS games_per_session, t.lineup_size
          FROM matches m
          JOIN tournaments t ON m.tournament_id = t.id
          WHERE m.id = $1`,
@@ -150,132 +150,7 @@ const calculateTeamScoreInMatch = async (req, res) => {
       }
 
       const teamScore = teamScoreResult.rows[0];
-
-      // Check if both teams have submitted all games
-      const teamCountResult = await client.query(
-        `SELECT COUNT(DISTINCT team_id) AS team_count
-         FROM (
-           SELECT team_id
-           FROM scores
-           WHERE match_id = $1
-           GROUP BY team_id
-           HAVING COUNT(*) >= $2
-         ) complete_teams`,
-        [req.params.matchId, gamesPerSession]
-      );
-      const bothComplete = parseInt(teamCountResult.rows[0].team_count) === 2;
-
-      if (bothComplete) {
-        const pointsResult = await client.query(
-          'SELECT * FROM calculate_match_points($1)',
-          [req.params.matchId]
-        );
-
-        if (pointsResult.rows.length > 0) {
-          const points = pointsResult.rows[0];
-
-          await client.query(
-            `INSERT INTO match_points (
-               match_id, home_team_id, away_team_id,
-               home_game_points, home_series_points, home_total_points,
-               away_game_points, away_series_points, away_total_points
-             )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-             ON CONFLICT (match_id) DO UPDATE SET
-               home_game_points   = EXCLUDED.home_game_points,
-               home_series_points = EXCLUDED.home_series_points,
-               home_total_points  = EXCLUDED.home_total_points,
-               away_game_points   = EXCLUDED.away_game_points,
-               away_series_points = EXCLUDED.away_series_points,
-               away_total_points  = EXCLUDED.away_total_points,
-               calculated_at      = CURRENT_TIMESTAMP`,
-            [
-              req.params.matchId,
-              points.home_team_id, points.away_team_id,
-              JSON.stringify(points.home_game_pts), points.home_series_pts, points.home_total_pts,
-              JSON.stringify(points.away_game_pts), points.away_series_pts, points.away_total_pts
-            ]
-          );
-
-          let winnerTeamId = null;
-          if (points.home_total_pts > points.away_total_pts) {
-            winnerTeamId = points.home_team_id;
-          } else if (points.away_total_pts > points.home_total_pts) {
-            winnerTeamId = points.away_team_id;
-          }
-
-          await client.query(
-            `UPDATE matches
-             SET winner_team_id = $1, status = 'completed', updated_at = CURRENT_TIMESTAMP
-             WHERE id = $2`,
-            [winnerTeamId, req.params.matchId]
-          );
-
-          const maxPtsPerMatch = gamesPerSession + 1;
-          const homeIsWinner = winnerTeamId === points.home_team_id;
-          const awayIsWinner = winnerTeamId === points.away_team_id;
-
-          // Update home team stats
-          await client.query(
-            `INSERT INTO team_statistics (team_id, tournament_id, total_matches_played, matches_won, matches_lost,
-               total_team_score, team_average, total_points)
-             VALUES ($1, $2, 1, $3, $4, $5, $6, $7)
-             ON CONFLICT (team_id, tournament_id) DO UPDATE SET
-               total_matches_played = team_statistics.total_matches_played + 1,
-               matches_won          = team_statistics.matches_won + $3,
-               matches_lost         = team_statistics.matches_lost + $4,
-               total_team_score     = team_statistics.total_team_score + $5,
-               total_points         = team_statistics.total_points + $7,
-               team_average         = CASE
-                 WHEN (team_statistics.total_matches_played + 1) > 0
-                 THEN ROUND((team_statistics.total_team_score + $5)::DECIMAL / (team_statistics.total_matches_played + 1), 2)
-                 ELSE 0 END,
-               points_percentage    = CASE
-                 WHEN (team_statistics.total_matches_played + 1) > 0
-                 THEN ROUND(((team_statistics.total_points + $7)::DECIMAL / ((team_statistics.total_matches_played + 1) * $8)) * 100, 2)
-                 ELSE 0 END,
-               last_updated         = CURRENT_TIMESTAMP`,
-            [points.home_team_id, match.tournament_id,
-             homeIsWinner ? 1 : 0, awayIsWinner ? 1 : 0,
-             parseInt(teamScore.total_team_score), parseFloat(teamScore.team_average),
-             points.home_total_pts, maxPtsPerMatch]
-          );
-
-          // Get away team score for its stats update
-          const awayScoreResult = await client.query(
-            `SELECT SUM(score) AS total, ROUND(SUM(score)::DECIMAL / COUNT(*), 2) AS avg
-             FROM scores WHERE match_id = $1 AND team_id = $2`,
-            [req.params.matchId, points.away_team_id]
-          );
-          const awayTotal = parseInt(awayScoreResult.rows[0]?.total || 0);
-          const awayAvg   = parseFloat(awayScoreResult.rows[0]?.avg   || 0);
-
-          await client.query(
-            `INSERT INTO team_statistics (team_id, tournament_id, total_matches_played, matches_won, matches_lost,
-               total_team_score, team_average, total_points)
-             VALUES ($1, $2, 1, $3, $4, $5, $6, $7)
-             ON CONFLICT (team_id, tournament_id) DO UPDATE SET
-               total_matches_played = team_statistics.total_matches_played + 1,
-               matches_won          = team_statistics.matches_won + $3,
-               matches_lost         = team_statistics.matches_lost + $4,
-               total_team_score     = team_statistics.total_team_score + $5,
-               total_points         = team_statistics.total_points + $7,
-               team_average         = CASE
-                 WHEN (team_statistics.total_matches_played + 1) > 0
-                 THEN ROUND((team_statistics.total_team_score + $5)::DECIMAL / (team_statistics.total_matches_played + 1), 2)
-                 ELSE 0 END,
-               points_percentage    = CASE
-                 WHEN (team_statistics.total_matches_played + 1) > 0
-                 THEN ROUND(((team_statistics.total_points + $7)::DECIMAL / ((team_statistics.total_matches_played + 1) * $8)) * 100, 2)
-                 ELSE 0 END,
-               last_updated         = CURRENT_TIMESTAMP`,
-            [points.away_team_id, match.tournament_id,
-             awayIsWinner ? 1 : 0, homeIsWinner ? 1 : 0,
-             awayTotal, awayAvg,
-             points.away_total_pts, maxPtsPerMatch]
-          );
-        }
-      }
+      const { matchCompleted } = await tryCompleteMatch(client, req.params.matchId, match.tournament_id, gamesPerSession, match.lineup_size);
 
       res.status(201).json({
         matchId: match.id,
@@ -284,8 +159,8 @@ const calculateTeamScoreInMatch = async (req, res) => {
         totalHandicap: parseInt(teamScore.total_handicap),
         teamAverage: parseFloat(teamScore.team_average),
         gamesPlayed: parseInt(teamScore.games_played),
-        matchCompleted: bothComplete,
-        message: bothComplete ? 'Match completed and points calculated' : 'Team score recorded'
+        matchCompleted,
+        message: matchCompleted ? 'Match completed and points calculated' : 'Team score recorded'
       });
     });
   } catch (error) {

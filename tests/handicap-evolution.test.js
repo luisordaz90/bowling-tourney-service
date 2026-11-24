@@ -12,6 +12,8 @@ const request = require('supertest');
 const app = require('../server');
 const { query } = require('../config/database');
 
+let leagueId;
+
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 
 function expectedHandicap(totalPins, totalGames, base = 220, pct = 0.90) {
@@ -28,6 +30,11 @@ async function getPlayerStats(playerId, tournamentId) {
   );
   return res.rows[0] || null;
 }
+
+beforeAll(async () => {
+  const leaguesRes = await request(app).get('/api/leagues');
+  leagueId = leaguesRes.body[0].id;
+});
 
 // Score sets per session (3 games each).
 // Designed to show handicap evolving as the player improves then regresses.
@@ -71,6 +78,7 @@ describe('Handicap evolution — open format', () => {
         rankingMethod: 'pins',
         hdcpBase: 220,
         hdcpPercentage: 0.90,
+        leagueId,
       });
     tournamentId = tourneyRes.body.id;
 
@@ -153,6 +161,7 @@ describe('Handicap evolution — paired format', () => {
         rankingMethod: 'points',
         hdcpBase: 220,
         hdcpPercentage: 0.90,
+        leagueId,
       });
     tournamentId = tourneyRes.body.id;
 

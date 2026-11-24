@@ -191,49 +191,14 @@ describe('E2E: Full Tournament Lifecycle', () => {
       ids.openLeague = res.body.id;
     });
 
-    it('creates edition for paired league', async () => {
-      const res = await request(app)
-        .post(`/api/leagues/${ids.pairedLeague}/editions`)
-        .send({
-          leagueId: ids.pairedLeague,
-          name: 'Spring 2026', season: 'spring', year: 2026,
-          startDate: '2026-04-01', endDate: '2026-06-30',
-          totalSessions: 10, sessionType: 'weekly',
-        });
-      expect(res.status).toBe(201);
-      expect(res.body).toHaveProperty('id');
-      ids.pairedEdition = res.body.id;
-    });
-
-    it('creates edition for open league', async () => {
-      const res = await request(app)
-        .post(`/api/leagues/${ids.openLeague}/editions`)
-        .send({
-          leagueId: ids.openLeague,
-          name: 'Spring 2026', season: 'spring', year: 2026,
-          startDate: '2026-04-01', endDate: '2026-06-30',
-          totalSessions: 10, sessionType: 'weekly',
-        });
-      expect(res.status).toBe(201);
-      ids.openEdition = res.body.id;
-    });
-
-    it('retrieves both leagues and their editions', async () => {
+    it('retrieves both leagues', async () => {
       const r1 = await request(app).get(`/api/leagues/${ids.pairedLeague}`);
       expect(r1.status).toBe(200);
       expect(r1.body.name).toBe('Metro Paired League');
 
-      const r2 = await request(app).get(`/api/leagues/${ids.pairedLeague}/editions`);
-      expect(r2.status).toBe(200);
-      expect(r2.body).toHaveLength(1);
-
       const r3 = await request(app).get(`/api/leagues/${ids.openLeague}`);
       expect(r3.status).toBe(200);
       expect(r3.body.name).toBe('Metro Open League');
-
-      const r4 = await request(app).get(`/api/leagues/${ids.openLeague}/editions`);
-      expect(r4.status).toBe(200);
-      expect(r4.body).toHaveLength(1);
     });
   });
 
@@ -288,7 +253,7 @@ describe('E2E: Full Tournament Lifecycle', () => {
         name: 'Metro Paired Spring 2026',
         startDate: '2026-04-01', endDate: '2026-06-30',
         maxTeams: 8, totalSessions: 10, sessionType: 'weekly',
-        leagueId: ids.pairedLeague, editionId: ids.pairedEdition,
+        leagueId: ids.pairedLeague, season: 'spring', year: 2026,
         scheduleType: 'paired', rankingMethod: 'points',
         hdcpBase: 220, hdcpPercentage: 0.90,
       });
@@ -302,7 +267,7 @@ describe('E2E: Full Tournament Lifecycle', () => {
         name: 'Metro Open Spring 2026',
         startDate: '2026-04-01', endDate: '2026-06-30',
         maxTeams: 8, totalSessions: 10, sessionType: 'weekly',
-        leagueId: ids.openLeague, editionId: ids.openEdition,
+        leagueId: ids.openLeague, season: 'spring', year: 2026,
         scheduleType: 'open', rankingMethod: 'pins',
         hdcpBase: 220, hdcpPercentage: 0.90,
       });
@@ -840,7 +805,7 @@ describe('E2E: Full Tournament Lifecycle', () => {
       await submitOpenSessionScores(4, 3);
       await submitOpenSessionScores(5, 4);
       await submitOpenSessionScores(6, 5);
-    });
+    }, 30000);
 
     it('verifies cumulative handicap progression (open, Alice)', async () => {
       const res = await request(app)
@@ -913,16 +878,14 @@ describe('E2E: Full Tournament Lifecycle', () => {
       expect(open.body.totalPlayers).toBe(12);
     });
 
-    it('verifies each league has its edition', async () => {
-      const r1 = await request(app)
-        .get(`/api/leagues/${ids.pairedLeague}/editions`);
+    it('verifies each league has its tournament', async () => {
+      const r1 = await request(app).get(`/api/tournaments/${ids.pairedTournament}`);
       expect(r1.status).toBe(200);
-      expect(r1.body).toHaveLength(1);
+      expect(r1.body.leagueId).toBe(ids.pairedLeague);
 
-      const r2 = await request(app)
-        .get(`/api/leagues/${ids.openLeague}/editions`);
+      const r2 = await request(app).get(`/api/tournaments/${ids.openTournament}`);
       expect(r2.status).toBe(200);
-      expect(r2.body).toHaveLength(1);
+      expect(r2.body.leagueId).toBe(ids.openLeague);
     });
   });
 
@@ -945,6 +908,7 @@ describe('E2E: Full Tournament Lifecycle', () => {
         name: 'Empty Tournament', startDate: '2026-07-01', endDate: '2026-08-01',
         maxTeams: 8, totalSessions: 3, sessionType: 'weekly',
         scheduleType: 'paired', rankingMethod: 'points',
+        leagueId: ids.pairedLeague,
       });
       // Register only 1 team
       await request(app)
@@ -984,6 +948,7 @@ describe('E2E: Full Tournament Lifecycle', () => {
         maxTeams: 8, totalSessions: 5, sessionType: 'weekly',
         scheduleType: 'open', rankingMethod: 'pins',
         hdcpBase: 200, hdcpPercentage: 1.00,
+        leagueId: ids.openLeague,
       });
       expect(resB.status).toBe(201);
       tournamentB = resB.body.id;
@@ -994,6 +959,7 @@ describe('E2E: Full Tournament Lifecycle', () => {
         maxTeams: 8, totalSessions: 5, sessionType: 'weekly',
         scheduleType: 'open', rankingMethod: 'pins',
         hdcpBase: 250, hdcpPercentage: 0.80,
+        leagueId: ids.openLeague,
       });
       expect(resC.status).toBe(201);
       tournamentC = resC.body.id;

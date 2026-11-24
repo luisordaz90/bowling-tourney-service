@@ -1,44 +1,97 @@
 openapi: 3.0.3
 info:
-  title: Bowling Tournament Management API
-  description: A comprehensive API for managing bowling tournaments, teams, players, matches, and statistics
+  title: Bowling Tournament League API
+  description: |
+    REST API for managing bowling tournament leagues, teams, players,
+    match scheduling (round-robin), scoring, and statistics.
   version: 1.0.0
   contact:
     name: Bowling Tournament API
-    email: support@bowlingtournament.com
 
 servers:
-  - url: http://localhost:3000/api
-    description: Development server
+  - url: http://localhost:3000
+    description: Local development
 
 tags:
-  - name: Tournaments
-    description: Tournament management operations
-  - name: Teams
-    description: Team management operations
-  - name: Players
-    description: Player management operations
-  - name: Tournament Teams
-    description: Team registration for tournaments
-  - name: Team Players
-    description: Player assignment to teams
-  - name: Sessions
-    description: League session management
-  - name: Matches
-    description: Match management operations
-  - name: Scores
-    description: Score recording and management
-  - name: Statistics
-    description: Statistics and standings
   - name: Health
-    description: API health check
+  - name: Tournaments
+  - name: Registration
+  - name: Schedule
+  - name: Scoring
+  - name: Standings & Statistics
+  - name: Teams
+  - name: Players
+  - name: Matches
+  - name: Sessions
+  - name: Leagues
+  - name: Player Statistics
+  - name: Team Statistics
 
 paths:
-  # Tournament Routes
-  /tournaments:
+  # ── Health ──────────────────────────────────────────────────────────────────
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: OK
+                  timestamp:
+                    type: string
+                    format: date-time
+                  message:
+                    type: string
+                    example: Bowling Tournament API is running
+                  database:
+                    type: object
+                    properties:
+                      connected:
+                        type: boolean
+                      serverTime:
+                        type: string
+                        format: date-time
+                      postgresVersion:
+                        type: string
+                  environment:
+                    type: string
+                  version:
+                    type: string
+        '503':
+          description: Database connection failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Tournaments ─────────────────────────────────────────────────────────────
+  /api/tournaments:
+    get:
+      tags: [Tournaments]
+      summary: List all tournaments
+      operationId: listTournaments
+      responses:
+        '200':
+          description: List of tournaments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
     post:
       tags: [Tournaments]
-      summary: Create a new tournament
+      summary: Create a tournament
+      operationId: createTournament
       requestBody:
         required: true
         content:
@@ -47,70 +100,38 @@ paths:
               $ref: '#/components/schemas/TournamentCreate'
       responses:
         '201':
-          description: Tournament created successfully
+          description: Tournament created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Tournament'
+                $ref: '#/components/schemas/TournamentResponse'
         '400':
-          description: Bad request - missing required fields
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    get:
-      tags: [Tournaments]
-      summary: Get all tournaments
-      responses:
-        '200':
-          description: List of tournaments
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Tournament'
+          $ref: '#/components/responses/InternalError'
 
-  /tournaments/{id}:
+  /api/tournaments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
     get:
       tags: [Tournaments]
       summary: Get tournament by ID
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      operationId: getTournament
       responses:
         '200':
-          description: Tournament details
+          description: Tournament found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Tournament'
+                $ref: '#/components/schemas/TournamentResponse'
         '404':
-          description: Tournament not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
     put:
       tags: [Tournaments]
-      summary: Update tournament
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      summary: Update a tournament
+      operationId: updateTournament
       requestBody:
         required: true
         content:
@@ -119,538 +140,362 @@ paths:
               $ref: '#/components/schemas/TournamentUpdate'
       responses:
         '200':
-          description: Tournament updated successfully
+          description: Tournament updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Tournament'
+                $ref: '#/components/schemas/TournamentResponse'
         '400':
-          description: Bad request - invalid status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '404':
-          description: Tournament not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
     delete:
       tags: [Tournaments]
-      summary: Delete tournament
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      summary: Delete a tournament
+      operationId: deleteTournament
       responses:
         '204':
-          description: Tournament deleted successfully
+          description: Tournament deleted
         '404':
-          description: Tournament not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
-          description: Internal server error
+          $ref: '#/components/responses/InternalError'
+
+  # ── Registration ────────────────────────────────────────────────────────────
+  /api/tournaments/{tournamentId}/teams:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    get:
+      tags: [Registration]
+      summary: List teams registered in a tournament
+      operationId: getRegisteredTeams
+      responses:
+        '200':
+          description: Registered teams with details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
-  # Team Routes
-  /teams:
+                $ref: '#/components/schemas/TournamentTeamListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
     post:
-      tags: [Teams]
-      summary: Create a new team
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Team'
-      responses:
-        '201':
-          description: Team created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Team'
-        '400':
-          description: Bad request - missing required fields or team name already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    get:
-      tags: [Teams]
-      summary: Get all teams
-      responses:
-        '200':
-          description: List of teams
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Team'
-
-  /teams/{id}:
-    get:
-      tags: [Teams]
-      summary: Get team by ID
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Team details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Team'
-        '404':
-          description: Team not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    put:
-      tags: [Teams]
-      summary: Update team
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TeamUpdate'
-      responses:
-        '200':
-          description: Team updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Team'
-        '400':
-          description: Bad request - invalid status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Team not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    delete:
-      tags: [Teams]
-      summary: Delete team
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '204':
-          description: Team deleted successfully
-        '400':
-          description: Cannot delete team registered in tournaments
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Team not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  # Player Routes
-  /players:
-    post:
-      tags: [Players]
-      summary: Create a new player
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Player'
-      responses:
-        '201':
-          description: Player created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Player'
-        '400':
-          description: Bad request - missing required fields or email already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    get:
-      tags: [Players]
-      summary: Get all players
-      responses:
-        '200':
-          description: List of players
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Player'
-
-  /players/{id}:
-    get:
-      tags: [Players]
-      summary: Get player by ID
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Player details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Player'
-        '404':
-          description: Player not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    delete:
-      tags: [Players]
-      summary: Delete player
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '204':
-          description: Player deleted successfully
-        '400':
-          description: Cannot delete player with recorded match scores
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Player not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  # Tournament Team Registration Routes
-  /tournaments/{tournamentId}/teams:
-    post:
-      tags: [Tournament Teams]
-      summary: Register team for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TournamentTeamRegistration'
-      responses:
-        '201':
-          description: Team registered successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TournamentTeam'
-        '400':
-          description: Bad request - tournament full or team already registered
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Tournament or team not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    get:
-      tags: [Tournament Teams]
-      summary: Get teams registered for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: List of registered teams with details
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TournamentTeamWithDetails'
-
-  # Team Player Assignment Routes
-  /tournaments/{tournamentId}/teams/{teamId}/players:
-    post:
-      tags: [Team Players]
-      summary: Assign player to team for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: teamId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TeamPlayerAssignment'
-      responses:
-        '201':
-          description: Player assigned successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TeamPlayer'
-        '400':
-          description: Bad request - player already assigned or invalid role
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Tournament, team, or player not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    get:
-      tags: [Team Players]
-      summary: Get players assigned to team for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: teamId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: List of assigned players with details
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TeamPlayerWithDetails'
-
-  # League Session Routes
-  /tournaments/{tournamentId}/sessions:
-    post:
-      tags: [Sessions]
-      summary: Create league session for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LeagueSessionCreate'
-      responses:
-        '201':
-          description: League session created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LeagueSession'
-        '400':
-          description: Bad request - missing required fields or session number already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Tournament not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    get:
-      tags: [Sessions]
-      summary: Get league sessions for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: List of league sessions sorted by session number
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/LeagueSession'
-
-  /sessions/{id}/status:
-    put:
-      tags: [Sessions]
-      summary: Update league session status
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      tags: [Registration]
+      summary: Register a team to a tournament
+      operationId: registerTeam
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - status
+              required: [teamId]
               properties:
-                status:
+                teamId:
                   type: string
-                  enum: [scheduled, active, completed, cancelled]
+                  format: uuid
+                seedNumber:
+                  type: integer
+      responses:
+        '201':
+          description: Team registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentTeamResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/teams/{teamId}:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+      - $ref: '#/components/parameters/TeamIdPath'
+    delete:
+      tags: [Registration]
+      summary: Remove a team from a tournament
+      operationId: removeTeamFromTournament
+      responses:
+        '204':
+          description: Team removed
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/teams/{teamId}/players:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+      - $ref: '#/components/parameters/TeamIdPath'
+    get:
+      tags: [Registration]
+      summary: List players on a team roster in a tournament
+      operationId: getRegisteredPlayers
       responses:
         '200':
-          description: Session status updated successfully
+          description: Roster players with details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LeagueSession'
-        '400':
-          description: Invalid status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: League session not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  # Match Routes
-  /tournaments/{tournamentId}/matches:
+                $ref: '#/components/schemas/TeamPlayerListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
     post:
-      tags: [Matches]
-      summary: Create match for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      tags: [Registration]
+      summary: Add a player to a team roster in a tournament
+      operationId: registerPlayerToTeam
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [playerId]
+              properties:
+                playerId:
+                  type: string
+                  format: uuid
+                role:
+                  type: string
+                  enum: [captain, regular, substitute]
+                  default: regular
+      responses:
+        '201':
+          description: Player added to roster
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamPlayerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/teams/{teamId}/players/{playerId}:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+      - $ref: '#/components/parameters/TeamIdPath'
+      - $ref: '#/components/parameters/PlayerIdPath'
+    delete:
+      tags: [Registration]
+      summary: Remove a player from a tournament roster
+      operationId: removePlayerFromRoster
+      responses:
+        '200':
+          description: Player removed (soft delete)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Schedule ────────────────────────────────────────────────────────────────
+  /api/tournaments/{tournamentId}/sessions:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    get:
+      tags: [Schedule]
+      summary: List sessions for a tournament
+      operationId: getTournamentSessions
+      responses:
+        '200':
+          description: Sessions with match counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Schedule]
+      summary: Create a session for a tournament
+      operationId: createTournamentSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionCreate'
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/sessions/{sessionNumber}/matches:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+      - $ref: '#/components/parameters/SessionNumberPath'
+    get:
+      tags: [Schedule]
+      summary: Get matches for a specific session (round)
+      operationId: getRoundMatches
+      responses:
+        '200':
+          description: Session matches with validation info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoundMatchesResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/schedule/round-robin/preview:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    get:
+      tags: [Schedule]
+      summary: Preview round-robin schedule without saving
+      operationId: previewRoundRobin
+      responses:
+        '200':
+          description: Preview of round-robin schedule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoundRobinPreviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/schedule/round-robin:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    post:
+      tags: [Schedule]
+      summary: Generate and persist round-robin schedule
+      operationId: generateRoundRobin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                startDate:
+                  type: string
+                  format: date
+                daysBetweenSessions:
+                  type: integer
+                  default: 7
+                forceCreate:
+                  type: boolean
+                  default: false
+      responses:
+        '201':
+          description: Schedule generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoundRobinGenerateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/schedule/summary:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    get:
+      tags: [Schedule]
+      summary: Get tournament schedule summary
+      operationId: getScheduleSummary
+      responses:
+        '200':
+          description: Schedule summary with validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleSummaryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/schedule:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    delete:
+      tags: [Schedule]
+      summary: Delete tournament schedule (matches and auto-generated sessions)
+      operationId: deleteSchedule
+      responses:
+        '200':
+          description: Schedule cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  removedMatches:
+                    type: integer
+                  removedSessions:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/schedule/validate:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    get:
+      tags: [Schedule]
+      summary: Validate tournament schedule
+      operationId: validateSchedule
+      responses:
+        '200':
+          description: Validation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleValidationResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/matches:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    get:
+      tags: [Schedule]
+      summary: List all matches in a tournament
+      operationId: getTournamentMatches
+      responses:
+        '200':
+          description: Enriched match list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentMatchListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Schedule]
+      summary: Create a single match in a tournament
+      operationId: createTournamentMatch
       requestBody:
         required: true
         content:
@@ -659,1285 +504,2938 @@ paths:
               $ref: '#/components/schemas/MatchCreate'
       responses:
         '201':
-          description: Match created successfully
+          description: Match created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Match'
+                $ref: '#/components/schemas/MatchResponse'
         '400':
-          description: Bad request - missing teams, teams same, or teams not registered
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Tournament or teams not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/InternalError'
+
+  # ── Scoring ─────────────────────────────────────────────────────────────────
+  /api/tournaments/{tournamentId}/sessions/{sessionNumber}/scores:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+      - $ref: '#/components/parameters/SessionNumberPath'
     get:
-      tags: [Matches]
-      summary: Get matches for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      tags: [Scoring]
+      summary: Get scores for a session
+      operationId: getSessionScores
       responses:
         '200':
-          description: List of matches for tournament
+          description: Scores grouped by player
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Match'
+                $ref: '#/components/schemas/SessionScoreListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Scoring]
+      summary: Submit scores for a player in a session
+      operationId: submitScore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScoreSubmit'
+      responses:
+        '201':
+          description: Score submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreSubmitResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
-  /matches/{id}:
+  /api/tournaments/{tournamentId}/sessions/{sessionNumber}/scores/{playerId}:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+      - $ref: '#/components/parameters/SessionNumberPath'
+      - $ref: '#/components/parameters/PlayerIdPath'
+    put:
+      tags: [Scoring]
+      summary: Update scores for a player in a session
+      operationId: updateScore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scores]
+              properties:
+                teamId:
+                  type: string
+                  format: uuid
+                  description: Required for paired format
+                scores:
+                  type: array
+                  items:
+                    type: integer
+                    minimum: 0
+                    maximum: 300
+      responses:
+        '200':
+          description: Score updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreUpdateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Scoring]
+      summary: Delete scores for a player in a session
+      operationId: deleteScore
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                teamId:
+                  type: string
+                  format: uuid
+                  description: Required for paired format
+      responses:
+        '200':
+          description: Scores deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Standings & Statistics ──────────────────────────────────────────────────
+  /api/tournaments/{tournamentId}/standings:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
     get:
-      tags: [Matches]
-      summary: Get match by ID
+      tags: [Standings & Statistics]
+      summary: Get tournament standings
+      operationId: getStandings
+      description: |
+        Returns standings based on the tournament ranking_method.
+        - `points`: team-based standings from tournament_standings view
+        - `pins`: player-based standings aggregated from scores
+      responses:
+        '200':
+          description: Standings list
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/PointsStandingsListResponse'
+                  - $ref: '#/components/schemas/PinsStandingsListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/statistics:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    get:
+      tags: [Standings & Statistics]
+      summary: Get tournament aggregate statistics
+      operationId: getTournamentStatistics
+      responses:
+        '200':
+          description: Aggregate statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentStatisticsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/players/{playerId}/statistics:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+      - $ref: '#/components/parameters/PlayerIdPath'
+    get:
+      tags: [Standings & Statistics]
+      summary: Get a player's statistics in a tournament
+      operationId: getPlayerTournamentStats
+      responses:
+        '200':
+          description: Player tournament statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerTournamentStatsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/teams/{teamId}/statistics:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+      - $ref: '#/components/parameters/TeamIdPath'
+    get:
+      tags: [Standings & Statistics]
+      summary: Get a team's statistics in a tournament
+      operationId: getTeamTournamentStats
+      responses:
+        '200':
+          description: Team tournament statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamTournamentStatsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/player-statistics:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    get:
+      tags: [Standings & Statistics]
+      summary: Get all players' statistics in a tournament
+      operationId: getTournamentPlayersStats
+      responses:
+        '200':
+          description: All player statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentPlayersStatsListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tournaments/{tournamentId}/team-statistics:
+    parameters:
+      - $ref: '#/components/parameters/TournamentIdPath'
+    get:
+      tags: [Standings & Statistics]
+      summary: Get all teams' statistics in a tournament
+      operationId: getTournamentTeamsStats
+      responses:
+        '200':
+          description: All team statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TournamentTeamsStatsListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Teams ───────────────────────────────────────────────────────────────────
+  /api/teams:
+    get:
+      tags: [Teams]
+      summary: List all teams
+      operationId: listTeams
+      responses:
+        '200':
+          description: Team list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Teams]
+      summary: Create a team
+      operationId: createTeam
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamCreate'
+      responses:
+        '201':
+          description: Team created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/teams/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Teams]
+      summary: Get team by ID
+      operationId: getTeam
+      responses:
+        '200':
+          description: Team found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Teams]
+      summary: Update a team
+      operationId: updateTeam
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamUpdate'
+      responses:
+        '200':
+          description: Team updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Teams]
+      summary: Delete a team
+      operationId: deleteTeam
+      responses:
+        '204':
+          description: Team deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Players ─────────────────────────────────────────────────────────────────
+  /api/players:
+    get:
+      tags: [Players]
+      summary: List all players
+      operationId: listPlayers
+      responses:
+        '200':
+          description: Player list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Players]
+      summary: Create a player
+      operationId: createPlayer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlayerCreate'
+      responses:
+        '201':
+          description: Player created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/players/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Players]
+      summary: Get player by ID
+      operationId: getPlayer
+      responses:
+        '200':
+          description: Player found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Players]
+      summary: Delete a player
+      operationId: deletePlayer
+      responses:
+        '204':
+          description: Player deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/players/{playerId}/dashboard:
+    parameters:
+      - $ref: '#/components/parameters/PlayerIdPathAlt'
+    get:
+      tags: [Players]
+      summary: Get player dashboard (overview of teams, stats, recent scores)
+      operationId: getPlayerDashboard
+      responses:
+        '200':
+          description: Player dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerDashboardResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/players/{playerId}/teams:
+    parameters:
+      - $ref: '#/components/parameters/PlayerIdPathAlt'
+    get:
+      tags: [Players]
+      summary: Get teams a player belongs to
+      operationId: getPlayerTeams
       parameters:
-        - name: id
-          in: path
-          required: true
+        - name: tournamentId
+          in: query
           schema:
             type: string
             format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, active, completed, cancelled]
+        - name: includeInactive
+          in: query
+          schema:
+            type: string
+            enum: ['true', 'false']
+            default: 'false'
+      responses:
+        '200':
+          description: Player team memberships
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerTeamListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/players/{playerId}/statistics:
+    parameters:
+      - $ref: '#/components/parameters/PlayerIdPathAlt'
+    get:
+      tags: [Players]
+      summary: Get player statistics across tournaments
+      operationId: getPlayerStats
+      parameters:
+        - name: tournamentId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, active, completed, cancelled]
+      responses:
+        '200':
+          description: Player statistics per tournament
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerStatsListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/players/{playerId}/league-history:
+    parameters:
+      - $ref: '#/components/parameters/PlayerIdPathAlt'
+    get:
+      tags: [Players]
+      summary: Get player league history
+      operationId: getPlayerLeagueHistory
+      parameters:
+        - name: includeInactive
+          in: query
+          schema:
+            type: string
+            enum: ['true', 'false']
+            default: 'false'
+      responses:
+        '200':
+          description: League history entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeagueHistoryListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Matches ─────────────────────────────────────────────────────────────────
+  /api/matches/{matchId}:
+    parameters:
+      - $ref: '#/components/parameters/MatchIdPath'
+    get:
+      tags: [Matches]
+      summary: Get match by ID with points breakdown
+      operationId: getMatch
       responses:
         '200':
           description: Match details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Match'
+                $ref: '#/components/schemas/MatchDetailResponse'
         '404':
-          description: Match not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
-  /matches/{id}/status:
+  /api/matches/{matchId}/status:
+    parameters:
+      - $ref: '#/components/parameters/MatchIdPath'
     put:
       tags: [Matches]
       summary: Update match status
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      operationId: updateMatchStatus
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - status
+              required: [status]
               properties:
                 status:
                   type: string
                   enum: [scheduled, in_progress, completed, cancelled, postponed]
       responses:
         '200':
-          description: Match status updated successfully
+          description: Match status updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Match'
+                $ref: '#/components/schemas/MatchResponse'
         '400':
-          description: Invalid status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '404':
-          description: Match not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  # Player Match Score Routes
-  /matches/{matchId}/player-scores:
-    post:
-      tags: [Scores]
-      summary: Record player match scores
-      parameters:
-        - name: matchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PlayerMatchScoreCreate'
-      responses:
-        '201':
-          description: Player match score recorded successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlayerMatchScore'
-        '400':
-          description: Bad request - missing fields, invalid scores, or team not in match
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Match not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/InternalError'
+
+  /api/matches/{matchId}/player-scores:
+    parameters:
+      - $ref: '#/components/parameters/MatchIdPath'
     get:
-      tags: [Scores]
-      summary: Get player scores for match
-      parameters:
-        - name: matchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      tags: [Matches]
+      summary: Get per-player scores in a match
+      operationId: getMatchPlayerScores
       responses:
         '200':
-          description: List of player scores for match
+          description: Player scores
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/PlayerMatchScore'
+                $ref: '#/components/schemas/MatchPlayerScoreListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
-  # Team Match Score Routes
-  /matches/{matchId}/team-scores:
+  /api/matches/{matchId}/team-scores:
+    parameters:
+      - $ref: '#/components/parameters/MatchIdPath'
+    get:
+      tags: [Matches]
+      summary: Get computed team totals in a match
+      operationId: getMatchTeamScores
+      responses:
+        '200':
+          description: Team scores
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchTeamScoreListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
     post:
-      tags: [Scores]
-      summary: Calculate and record team match scores
-      parameters:
-        - name: matchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      tags: [Matches]
+      summary: Calculate/record team score in a match (legacy alias)
+      operationId: addTeamScoreInMatch
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - teamId
+              required: [teamId]
               properties:
                 teamId:
                   type: string
                   format: uuid
       responses:
         '201':
-          description: Team match score calculated and recorded successfully
+          description: Team score calculated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TeamMatchScore'
+                $ref: '#/components/schemas/TeamScoreCalcResponse'
         '400':
-          description: Bad request - team not in match or no player scores found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Match not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-    get:
-      tags: [Scores]
-      summary: Get team scores for match
-      parameters:
-        - name: matchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: List of team scores for match
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TeamMatchScore'
+          $ref: '#/components/responses/InternalError'
 
-  # Statistics Routes
-  /tournaments/{tournamentId}/standings:
-    get:
-      tags: [Statistics]
-      summary: Get tournament standings
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Tournament standings ranked by wins and total score
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TournamentStanding'
-        '404':
-          description: Tournament not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /tournaments/{tournamentId}/statistics:
-    get:
-      tags: [Statistics]
-      summary: Get tournament statistics overview
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Tournament statistics overview
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TournamentStatistics'
-        '404':
-          description: Tournament not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /tournaments/{tournamentId}/players/{playerId}/statistics:
-    get:
-      tags: [Statistics]
-      summary: Get player statistics for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: playerId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Player statistics for tournament
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlayerStatistics'
-        '404':
-          description: Tournament or player not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /tournaments/{tournamentId}/teams/{teamId}/statistics:
-    get:
-      tags: [Statistics]
-      summary: Get team statistics for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: teamId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Team statistics for tournament
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TeamStatistics'
-        '404':
-          description: Tournament or team not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /tournaments/{tournamentId}/player-statistics:
-    get:
-      tags: [Statistics]
-      summary: Get all player statistics for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: All player statistics for tournament sorted by average
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/PlayerStatisticsWithName'
-        '404':
-          description: Tournament not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /tournaments/{tournamentId}/team-statistics:
-    get:
-      tags: [Statistics]
-      summary: Get all team statistics for tournament
-      parameters:
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: All team statistics for tournament with rankings
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TeamStatisticsWithName'
-        '404':
-          description: Tournament not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /player-statistics/{playerId}/{tournamentId}:
-    put:
-      tags: [Statistics]
-      summary: Update player statistics
-      parameters:
-        - name: playerId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+  /api/matches/{matchId}/team-scores/calculate:
+    parameters:
+      - $ref: '#/components/parameters/MatchIdPath'
+    post:
+      tags: [Matches]
+      summary: Calculate team score, trigger match completion and points
+      operationId: calculateTeamScore
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PlayerStatisticsUpdate'
+              type: object
+              required: [teamId]
+              properties:
+                teamId:
+                  type: string
+                  format: uuid
       responses:
-        '200':
-          description: Player statistics updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlayerStatisticsRecord'
         '201':
-          description: Player statistics created successfully
+          description: Team score calculated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlayerStatisticsRecord'
-        '404':
-          description: Player or tournament not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/TeamScoreCalcResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/InternalError'
 
-  /team-statistics/{teamId}/{tournamentId}:
+  # ── Sessions ────────────────────────────────────────────────────────────────
+  /api/sessions/{id}/status:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
     put:
-      tags: [Statistics]
-      summary: Update team statistics
-      parameters:
-        - name: teamId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: tournamentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      tags: [Sessions]
+      summary: Update session status
+      operationId: updateSessionStatus
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TeamStatisticsUpdate'
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [scheduled, active, completed, cancelled]
       responses:
         '200':
-          description: Team statistics updated successfully
+          description: Session status updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TeamStatisticsRecord'
-        '201':
-          description: Team statistics created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TeamStatisticsRecord'
+                $ref: '#/components/schemas/SessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
-          description: Team or tournament not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/InternalError'
 
-  # Health Check Route
-  /health:
+  # ── Leagues ─────────────────────────────────────────────────────────────────
+  /api/leagues:
     get:
-      tags: [Health]
-      summary: API health check
+      tags: [Leagues]
+      summary: List leagues
+      operationId: listLeagues
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, archived]
+        - name: leagueType
+          in: query
+          schema:
+            type: string
       responses:
         '200':
-          description: API health status
+          description: League list
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthStatus'
+                $ref: '#/components/schemas/LeagueListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Leagues]
+      summary: Create a league
+      operationId: createLeague
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeagueCreate'
+      responses:
+        '201':
+          description: League created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeagueResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
+  /api/leagues/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Leagues]
+      summary: Get league by ID
+      operationId: getLeague
+      responses:
+        '200':
+          description: League found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeagueResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Leagues]
+      summary: Update a league
+      operationId: updateLeague
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeagueUpdate'
+      responses:
+        '200':
+          description: League updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeagueResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/leagues/validate-assignment:
+    post:
+      tags: [Leagues]
+      summary: Validate player-team assignment for league rules
+      operationId: validateAssignment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [playerId, teamId, tournamentId]
+              properties:
+                playerId:
+                  type: string
+                  format: uuid
+                teamId:
+                  type: string
+                  format: uuid
+                tournamentId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentValidationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/leagues/{leagueId}/violations:
+    parameters:
+      - name: leagueId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Leagues]
+      summary: Get league violations
+      operationId: getLeagueViolations
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: violationType
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Violations list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeagueViolationListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Player Statistics (admin upsert) ────────────────────────────────────────
+  /api/player-statistics/{playerId}/{tournamentId}:
+    parameters:
+      - $ref: '#/components/parameters/PlayerIdPathAlt'
+      - $ref: '#/components/parameters/TournamentIdPathAlt'
+    put:
+      tags: [Player Statistics]
+      summary: Upsert player statistics for a tournament
+      operationId: upsertPlayerStatistics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlayerStatisticsUpsert'
+      responses:
+        '200':
+          description: Statistics upserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerStatisticsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Team Statistics (admin upsert) ──────────────────────────────────────────
+  /api/team-statistics/{teamId}/{tournamentId}:
+    parameters:
+      - $ref: '#/components/parameters/TeamIdPathAlt'
+      - $ref: '#/components/parameters/TournamentIdPathAlt'
+    put:
+      tags: [Team Statistics]
+      summary: Upsert team statistics for a tournament
+      operationId: upsertTeamStatistics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamStatisticsUpsert'
+      responses:
+        '200':
+          description: Statistics upserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamStatisticsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+# ══════════════════════════════════════════════════════════════════════════════
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TournamentIdPath:
+      name: tournamentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TournamentIdPathAlt:
+      name: tournamentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TeamIdPath:
+      name: teamId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TeamIdPathAlt:
+      name: teamId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PlayerIdPath:
+      name: playerId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PlayerIdPathAlt:
+      name: playerId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MatchIdPath:
+      name: matchId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SessionNumberPath:
+      name: sessionNumber
+      in: path
+      required: true
+      schema:
+        type: integer
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
   schemas:
+    # ── Envelope schemas ────────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+
+    MessageResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    # ── Tournament ──────────────────────────────────────────────────────────
     Tournament:
       type: object
-      required:
-        - name
-        - startDate
-        - endDate
-        - maxTeams
-        - totalSessions
-        - sessionType
       properties:
         id:
           type: string
           format: uuid
-          description: Unique identifier for the tournament
         name:
           type: string
-          description: Tournament name
         description:
           type: string
           nullable: true
-          description: Tournament description
         startDate:
           type: string
           format: date-time
-          description: Tournament start date
         endDate:
           type: string
           format: date-time
-          description: Tournament end date
         maxTeams:
           type: integer
-          minimum: 1
-          description: Maximum number of teams allowed
         totalSessions:
           type: integer
-          minimum: 1
-          description: Total number of sessions in the tournament
         sessionType:
           type: string
-          description: Type of session (e.g., weekly, monthly)
-        sessionsCompleted:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Number of sessions completed
         status:
           type: string
           enum: [draft, active, completed, cancelled]
-          default: draft
-          description: Tournament status
+        sessionsCompleted:
+          type: integer
+        leagueId:
+          type: string
+          format: uuid
+        scheduleType:
+          type: string
+          enum: [paired, open]
+        rankingMethod:
+          type: string
+          enum: [points, pins]
+        hdcpBase:
+          type: integer
+        hdcpPercentage:
+          type: number
+        season:
+          type: string
+          nullable: true
+        year:
+          type: integer
+          nullable: true
+        gamesPerSession:
+          type: integer
         createdAt:
           type: string
           format: date-time
-          description: Tournament creation timestamp
         updatedAt:
           type: string
           format: date-time
-          description: Last update timestamp
 
+    TournamentCreate:
+      type: object
+      required: [name, startDate, endDate, maxTeams, totalSessions, sessionType, leagueId]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        maxTeams:
+          type: integer
+        totalSessions:
+          type: integer
+        sessionType:
+          type: string
+        leagueId:
+          type: string
+          format: uuid
+        scheduleType:
+          type: string
+          enum: [paired, open]
+          default: paired
+        rankingMethod:
+          type: string
+          enum: [points, pins]
+          default: points
+        hdcpBase:
+          type: integer
+          default: 220
+        hdcpPercentage:
+          type: number
+          default: 0.90
+        season:
+          type: string
+        year:
+          type: integer
+
+    TournamentUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        maxTeams:
+          type: integer
+        totalSessions:
+          type: integer
+        sessionType:
+          type: string
+        status:
+          type: string
+          enum: [draft, active, completed, cancelled]
+        sessionsCompleted:
+          type: integer
+
+    TournamentResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Tournament'
+
+    TournamentListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tournament'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    # ── Team ────────────────────────────────────────────────────────────────
     Team:
       type: object
-      required:
-        - name
-        - captainName
-        - captainEmail
       properties:
         id:
           type: string
           format: uuid
-          description: Unique identifier for the team
         name:
           type: string
-          description: Team name
         captainName:
           type: string
-          description: Team captain's name
         captainEmail:
           type: string
           format: email
-          description: Team captain's email
         captainPhone:
           type: string
           nullable: true
-          description: Team captain's phone number
         status:
           type: string
           enum: [active, inactive, withdrawn]
-          default: active
-          description: Team status
-        registrationDate:
-          type: string
-          format: date-time
-          description: Team registration date
         createdAt:
           type: string
           format: date-time
-          description: Team creation timestamp
         updatedAt:
           type: string
           format: date-time
-          description: Last update timestamp
 
+    TeamCreate:
+      type: object
+      required: [name, captainName, captainEmail]
+      properties:
+        name:
+          type: string
+        captainName:
+          type: string
+        captainEmail:
+          type: string
+          format: email
+        captainPhone:
+          type: string
+
+    TeamUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        captainName:
+          type: string
+        captainEmail:
+          type: string
+          format: email
+        captainPhone:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, withdrawn]
+
+    TeamResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Team'
+
+    TeamListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Team'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    # ── Player ──────────────────────────────────────────────────────────────
     Player:
       type: object
-      required:
-        - name
       properties:
         id:
           type: string
           format: uuid
-          description: Unique identifier for the player
         name:
           type: string
-          description: Player's name
         email:
           type: string
           format: email
           nullable: true
-          description: Player's email address
         phone:
           type: string
           nullable: true
-          description: Player's phone number
         handicap:
           type: integer
-          minimum: 0
-          default: 0
-          description: Player's handicap
         averageScore:
           type: number
-          format: float
-          minimum: 0
-          default: 0.00
-          description: Player's average score
         totalGamesPlayed:
           type: integer
-          minimum: 0
-          default: 0
-          description: Total games played by the player
         totalPins:
           type: integer
-          minimum: 0
-          default: 0
-          description: Total pins knocked down by the player
         createdAt:
           type: string
           format: date-time
-          description: Player creation timestamp
         updatedAt:
           type: string
           format: date-time
-          description: Last update timestamp
 
-    TournamentTeam:
+    PlayerCreate:
       type: object
-      required:
-        - tournamentId
-        - teamId
+      required: [name]
       properties:
-        id:
+        name:
           type: string
-          format: uuid
-          description: Unique identifier for the tournament team registration
-        tournamentId:
+        email:
           type: string
-          format: uuid
-          description: Tournament ID
-        teamId:
+          format: email
+        phone:
           type: string
-          format: uuid
-          description: Team ID
-        seedNumber:
+        handicap:
           type: integer
-          nullable: true
-          description: Team's seed number in the tournament
-        totalTournamentScore:
-          type: number
-          format: float
-          minimum: 0
-          default: 0.00
-          description: Team's total score in the tournament
-        gamesPlayedInTournament:
-          type: integer
-          minimum: 0
           default: 0
-          description: Number of games played in the tournament
-        sessionsPlayedInTournament:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Number of sessions played in the tournament
-        registrationDate:
-          type: string
-          format: date-time
-          description: Team registration date for the tournament
-        status:
-          type: string
-          enum: [registered, active, withdrawn, disqualified]
-          default: registered
-          description: Team status in the tournament
-        teamDetails:
-          $ref: '#/components/schemas/Team'
 
-    TeamPlayer:
+    PlayerResponse:
       type: object
-      required:
-        - teamId
-        - playerId
-        - tournamentId
       properties:
-        id:
-          type: string
-          format: uuid
-          description: Unique identifier for the team player assignment
-        teamId:
-          type: string
-          format: uuid
-          description: Team ID
-        playerId:
-          type: string
-          format: uuid
-          description: Player ID
-        tournamentId:
-          type: string
-          format: uuid
-          description: Tournament ID
-        role:
-          type: string
-          enum: [captain, regular, substitute]
-          default: regular
-          description: Player's role in the team
-        isActive:
-          type: boolean
-          default: true
-          description: Whether the player is currently active on the team
-        joinedDate:
-          type: string
-          format: date-time
-          description: Date when player joined the team
-        leftDate:
-          type: string
-          format: date-time
-          nullable: true
-          description: Date when player left the team
-        playerDetails:
+        data:
           $ref: '#/components/schemas/Player'
 
-    LeagueSession:
+    PlayerListResponse:
       type: object
-      required:
-        - tournamentId
-        - sessionNumber
-        - sessionDate
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Player'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    # ── League ──────────────────────────────────────────────────────────────
+    League:
+      type: object
       properties:
         id:
           type: string
           format: uuid
-          description: Unique identifier for the league session
-        tournamentId:
+        name:
           type: string
-          format: uuid
-          description: Tournament ID
-        sessionNumber:
-          type: integer
-          minimum: 1
-          description: Session number within the tournament
-        sessionName:
-          type: string
-          description: Session name
-        sessionDate:
-          type: string
-          format: date-time
-          description: Session date
-        status:
-          type: string
-          enum: [scheduled, active, completed, cancelled]
-          default: scheduled
-          description: Session status
-        notes:
+        description:
           type: string
           nullable: true
-          description: Additional notes for the session
+        leagueType:
+          type: string
+        status:
+          type: string
+        maxTeamsPerTournament:
+          type: integer
+          nullable: true
         createdAt:
           type: string
           format: date-time
-          description: Session creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
 
-    Match:
+    LeagueCreate:
       type: object
-      required:
-        - tournamentId
-        - homeTeamId
-        - awayTeamId
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        leagueType:
+          type: string
+          default: standard
+        maxTeamsPerTournament:
+          type: integer
+
+    LeagueUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        leagueType:
+          type: string
+        status:
+          type: string
+        maxTeamsPerTournament:
+          type: integer
+
+    LeagueResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/League'
+
+    LeagueListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/League'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    # ── Session (tournament_sessions) ───────────────────────────────────────
+    Session:
+      type: object
       properties:
         id:
           type: string
           format: uuid
-          description: Unique identifier for the match
         tournamentId:
           type: string
           format: uuid
-          description: Tournament ID
+        sessionNumber:
+          type: integer
+        sessionName:
+          type: string
+        sessionDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [scheduled, active, completed, cancelled]
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    SessionEnriched:
+      allOf:
+        - $ref: '#/components/schemas/Session'
+        - type: object
+          properties:
+            matchCount:
+              type: integer
+            completedMatches:
+              type: integer
+            scheduledMatches:
+              type: integer
+            inProgressMatches:
+              type: integer
+            isComplete:
+              type: boolean
+
+    SessionCreate:
+      type: object
+      required: [sessionNumber, sessionDate]
+      properties:
+        sessionNumber:
+          type: integer
+        sessionName:
+          type: string
+        sessionDate:
+          type: string
+          format: date
+        notes:
+          type: string
+
+    SessionResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Session'
+
+    SessionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionEnriched'
+
+    # ── Match ───────────────────────────────────────────────────────────────
+    Match:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tournamentId:
+          type: string
+          format: uuid
         homeTeamId:
           type: string
           format: uuid
-          description: Home team ID
         awayTeamId:
           type: string
           format: uuid
-          description: Away team ID
         sessionId:
           type: string
           format: uuid
           nullable: true
-          description: Session ID
         sessionNumber:
           type: integer
           nullable: true
-          description: Session number
-        weekNumber:
-          type: integer
-          nullable: true
-          description: Week number
         matchDate:
           type: string
           format: date-time
           nullable: true
-          description: Match date
         matchName:
           type: string
           nullable: true
-          description: Match name
         status:
           type: string
           enum: [scheduled, in_progress, completed, cancelled, postponed]
-          default: scheduled
-          description: Match status
         winnerTeamId:
           type: string
           format: uuid
           nullable: true
-          description: Winner team ID
         createdAt:
           type: string
           format: date-time
-          description: Match creation timestamp
         updatedAt:
           type: string
           format: date-time
-          description: Last update timestamp
 
-    PlayerMatchScore:
+    MatchCreate:
       type: object
-      required:
-        - matchId
-        - teamId
-        - playerId
-        - game1Score
-        - game2Score
-        - game3Score
+      required: [homeTeamId, awayTeamId]
+      properties:
+        homeTeamId:
+          type: string
+          format: uuid
+        awayTeamId:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        sessionNumber:
+          type: integer
+        matchDate:
+          type: string
+          format: date
+        matchName:
+          type: string
+
+    MatchResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Match'
+
+    MatchDetailResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/Match'
+            - type: object
+              properties:
+                homeTeamName:
+                  type: string
+                awayTeamName:
+                  type: string
+                winnerTeamName:
+                  type: string
+                  nullable: true
+                sessionName:
+                  type: string
+                  nullable: true
+                tournamentName:
+                  type: string
+                pointsBreakdown:
+                  type: object
+                  nullable: true
+                  properties:
+                    homeTeam:
+                      $ref: '#/components/schemas/TeamPointsBreakdown'
+                    awayTeam:
+                      $ref: '#/components/schemas/TeamPointsBreakdown'
+
+    TeamPointsBreakdown:
+      type: object
+      properties:
+        gamePoints:
+          type: array
+          items:
+            type: integer
+        seriesPoints:
+          type: integer
+        totalPoints:
+          type: integer
+
+    MatchEnriched:
+      allOf:
+        - $ref: '#/components/schemas/Match'
+        - type: object
+          properties:
+            homeTeamDetails:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+            awayTeamDetails:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+            winnerTeamDetails:
+              type: object
+              nullable: true
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+            sessionDetails:
+              type: object
+              nullable: true
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                date:
+                  type: string
+                  format: date-time
+
+    TournamentMatchListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchEnriched'
+
+    # ── Tournament Registration ─────────────────────────────────────────────
+    TournamentTeam:
+      type: object
       properties:
         id:
           type: string
           format: uuid
-          description: Unique identifier for the player match score
-        matchId:
-          type: string
-          format: uuid
-          description: Match ID
-        teamId:
-          type: string
-          format: uuid
-          description: Team ID
-        playerId:
-          type: string
-          format: uuid
-          description: Player ID
-        game1Score:
-          type: integer
-          minimum: 0
-          maximum: 300
-          description: Score for game 1
-        game2Score:
-          type: integer
-          minimum: 0
-          maximum: 300
-          description: Score for game 2
-        game3Score:
-          type: integer
-          minimum: 0
-          maximum: 300
-          description: Score for game 3
-        totalScore:
-          type: integer
-          minimum: 0
-          description: Total score (sum of all three games)
-        handicapApplied:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Handicap applied to the score
-        finalScore:
-          type: integer
-          minimum: 0
-          description: Final score including handicap
-        recordedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the score was recorded
-
-    TeamMatchScore:
-      type: object
-      required:
-        - matchId
-        - teamId
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: Unique identifier for the team match score
-        matchId:
-          type: string
-          format: uuid
-          description: Match ID
-        teamId:
-          type: string
-          format: uuid
-          description: Team ID
-        totalTeamScore:
-          type: integer
-          minimum: 0
-          description: Total team score
-        totalHandicap:
-          type: integer
-          minimum: 0
-          description: Total handicap applied
-        finalTeamScore:
-          type: integer
-          minimum: 0
-          description: Final team score including handicap
-        teamAverage:
-          type: number
-          format: float
-          minimum: 0
-          description: Team average score
-        gamesPlayed:
-          type: integer
-          minimum: 0
-          description: Number of games played
-        recordedAt:
-          type: string
-          format: date-time
-          description: Timestamp when the score was recorded
-
-    PlayerStatistics:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: Unique identifier for the player statistics
-        playerId:
-          type: string
-          format: uuid
-          description: Player ID
-        playerName:
-          type: string
-          description: Player name
         tournamentId:
           type: string
           format: uuid
-          description: Tournament ID
         teamId:
           type: string
           format: uuid
-          nullable: true
-          description: Team ID
-        gamesPlayed:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Number of games played
-        totalPins:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Total pins knocked down
-        currentAverage:
-          type: number
-          format: float
-          minimum: 0
-          default: 0.00
-          description: Current average score
-        highestGame:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Highest single game score
-        highestSeries:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Highest series score
-        matchesPlayed:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Number of matches played
-        lastUpdated:
-          type: string
-          format: date-time
-          description: Last update timestamp
-
-    TeamStatistics:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: Unique identifier for the team statistics
-        teamId:
-          type: string
-          format: uuid
-          description: Team ID
-        teamName:
-          type: string
-          description: Team name
-        tournamentId:
-          type: string
-          format: uuid
-          description: Tournament ID
-        totalMatchesPlayed:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Total matches played
-        matchesWon:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Number of matches won
-        matchesLost:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Number of matches lost
-        totalTeamScore:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Total team score
-        teamAverage:
-          type: number
-          format: float
-          minimum: 0
-          default: 0.00
-          description: Team average score
-        rankPosition:
-          type: integer
-          nullable: true
-          description: Current rank position in the tournament
-        lastUpdated:
-          type: string
-          format: date-time
-          description: Last update timestamp
-
-    TournamentStanding:
-      type: object
-      properties:
-        teamId:
-          type: string
-          format: uuid
-          description: Team ID
-        teamName:
-          type: string
-          description: Team name
-        captainName:
-          type: string
-          description: Team captain's name
-        totalScore:
-          type: integer
-          minimum: 0
-          description: Total team score
-        gamesPlayed:
-          type: integer
-          minimum: 0
-          description: Number of games played
-        averageScore:
-          type: number
-          format: float
-          minimum: 0
-          description: Average score
-        matchesPlayed:
-          type: integer
-          minimum: 0
-          description: Number of matches played
-        matchesWon:
-          type: integer
-          minimum: 0
-          description: Number of matches won
-        matchesLost:
-          type: integer
-          minimum: 0
-          description: Number of matches lost
-        winPercentage:
-          type: integer
-          minimum: 0
-          maximum: 100
-          description: Win percentage
         seedNumber:
           type: integer
           nullable: true
-          description: Team's seed number
+        totalTournamentScore:
+          type: integer
+        gamesPlayedInTournament:
+          type: integer
+        sessionsPlayedInTournament:
+          type: integer
+        registrationDate:
+          type: string
+          format: date-time
         status:
           type: string
-          description: Team status in the tournament
+        teamDetails:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            captainName:
+              type: string
+            captainEmail:
+              type: string
+            captainPhone:
+              type: string
+              nullable: true
+            status:
+              type: string
+
+    TournamentTeamResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/TournamentTeam'
+
+    TournamentTeamListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TournamentTeam'
+
+    TeamPlayer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+        playerId:
+          type: string
+          format: uuid
+        tournamentId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [captain, regular, substitute]
+        isActive:
+          type: boolean
+        joinedDate:
+          type: string
+          format: date-time
+        leftDate:
+          type: string
+          format: date-time
+          nullable: true
+        playerDetails:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            email:
+              type: string
+              nullable: true
+            phone:
+              type: string
+              nullable: true
+            handicap:
+              type: integer
+            averageScore:
+              type: number
+            totalGamesPlayed:
+              type: integer
+            totalPins:
+              type: integer
+
+    TeamPlayerResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/TeamPlayer'
+
+    TeamPlayerListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamPlayer'
+
+    # ── Scoring ─────────────────────────────────────────────────────────────
+    ScoreSubmit:
+      type: object
+      required: [playerId, scores]
+      properties:
+        playerId:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+          description: Required for paired format; optional for open
+        scores:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+            maximum: 300
+
+    ScoreSubmitResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            tournamentId:
+              type: string
+              format: uuid
+            sessionId:
+              type: string
+              format: uuid
+            sessionNumber:
+              type: integer
+            matchId:
+              type: string
+              format: uuid
+              nullable: true
+            playerId:
+              type: string
+              format: uuid
+            teamId:
+              type: string
+              format: uuid
+              nullable: true
+            scores:
+              type: array
+              items:
+                type: integer
+            handicapApplied:
+              type: integer
+            totalPins:
+              type: integer
+            sessionAverage:
+              type: number
+            recordedAt:
+              type: string
+              format: date-time
+
+    ScoreUpdateResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            tournamentId:
+              type: string
+              format: uuid
+            sessionId:
+              type: string
+              format: uuid
+            sessionNumber:
+              type: integer
+            matchId:
+              type: string
+              format: uuid
+              nullable: true
+            playerId:
+              type: string
+              format: uuid
+            teamId:
+              type: string
+              format: uuid
+              nullable: true
+            scores:
+              type: array
+              items:
+                type: integer
+            totalPins:
+              type: integer
+            sessionAverage:
+              type: number
+            recordedAt:
+              type: string
+              format: date-time
+
+    SessionScore:
+      type: object
+      properties:
+        tournamentId:
+          type: string
+          format: uuid
+        sessionNumber:
+          type: integer
+        playerId:
+          type: string
+          format: uuid
+        playerName:
+          type: string
+        teamId:
+          type: string
+          format: uuid
+          nullable: true
+        teamName:
+          type: string
+          nullable: true
+        matchId:
+          type: string
+          format: uuid
+          nullable: true
+        scores:
+          type: array
+          items:
+            type: integer
+        handicapApplied:
+          type: integer
+        totalPins:
+          type: integer
+        sessionAverage:
+          type: number
+        recordedAt:
+          type: string
+          format: date-time
+
+    SessionScoreListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionScore'
+
+    # ── Match player/team scores ────────────────────────────────────────────
+    MatchPlayerScore:
+      type: object
+      properties:
+        playerId:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+        playerName:
+          type: string
+        teamName:
+          type: string
+        scores:
+          type: array
+          items:
+            type: object
+            properties:
+              gameNumber:
+                type: integer
+              score:
+                type: integer
+                minimum: 0
+                maximum: 300
+        handicapApplied:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    MatchPlayerScoreListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchPlayerScore'
+
+    MatchTeamScore:
+      type: object
+      properties:
+        teamId:
+          type: string
+          format: uuid
+        teamName:
+          type: string
+        totalTeamScore:
+          type: integer
+        totalHandicap:
+          type: integer
+        teamAverage:
+          type: number
+        gamesPlayed:
+          type: integer
+        recordedAt:
+          type: string
+          format: date-time
+
+    MatchTeamScoreListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchTeamScore'
+
+    TeamScoreCalcResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            matchId:
+              type: string
+              format: uuid
+            teamId:
+              type: string
+              format: uuid
+            totalTeamScore:
+              type: integer
+            totalHandicap:
+              type: integer
+            teamAverage:
+              type: number
+            gamesPlayed:
+              type: integer
+            matchCompleted:
+              type: boolean
+            message:
+              type: string
+
+    # ── Standings ───────────────────────────────────────────────────────────
+    PointsStanding:
+      type: object
+      properties:
+        teamId:
+          type: string
+          format: uuid
+        teamName:
+          type: string
+        captainName:
+          type: string
+        totalScore:
+          type: integer
+        gamesPlayed:
+          type: integer
+        averageScore:
+          type: number
+        matchesPlayed:
+          type: integer
+        matchesWon:
+          type: integer
+        matchesLost:
+          type: integer
+        winPercentage:
+          type: number
+        totalPoints:
+          type: integer
+        pointsPercentage:
+          type: number
+        maxPossiblePoints:
+          type: integer
+        seedNumber:
+          type: integer
+          nullable: true
+        status:
+          type: string
         rank:
           type: integer
-          minimum: 1
-          description: Current rank position
 
+    PointsStandingsListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PointsStanding'
+
+    PinsStanding:
+      type: object
+      properties:
+        playerId:
+          type: string
+          format: uuid
+        playerName:
+          type: string
+        teamId:
+          type: string
+          format: uuid
+          nullable: true
+        teamName:
+          type: string
+          nullable: true
+        sessionsPlayed:
+          type: integer
+        totalPins:
+          type: integer
+        tournamentAverage:
+          type: number
+        rank:
+          type: integer
+
+    PinsStandingsListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PinsStanding'
+
+    # ── Tournament Statistics ───────────────────────────────────────────────
     TournamentStatistics:
       type: object
       properties:
         totalTeams:
           type: integer
-          minimum: 0
-          description: Total number of teams
         totalPlayers:
           type: integer
-          minimum: 0
-          description: Total number of active players
         totalGames:
           type: integer
-          minimum: 0
-          description: Total number of games played
         highestGame:
           type: integer
-          minimum: 0
-          description: Highest single game score
         highestSeries:
           type: integer
-          minimum: 0
-          description: Highest series score
         averageScore:
           type: integer
-          minimum: 0
-          description: Tournament average score
         sessionsCompleted:
           type: integer
-          minimum: 0
-          description: Number of sessions completed
         totalSessions:
           type: integer
-          minimum: 0
-          description: Total number of sessions
         totalMatches:
           type: integer
-          minimum: 0
-          description: Total number of matches
         completedMatches:
           type: integer
-          minimum: 0
-          description: Number of completed matches
         scheduledMatches:
           type: integer
-          minimum: 0
-          description: Number of scheduled matches
+        pointSystem:
+          type: object
+          properties:
+            totalPointsAwarded:
+              type: integer
+            maxPossiblePoints:
+              type: integer
+            averagePointsPerTeam:
+              type: number
+            averagePointsPercentage:
+              type: number
 
-    HealthStatus:
+    TournamentStatisticsResponse:
       type: object
       properties:
-        status:
+        data:
+          $ref: '#/components/schemas/TournamentStatistics'
+
+    PlayerTournamentStats:
+      type: object
+      properties:
+        playerId:
           type: string
-          description: Health status
-        timestamp:
+          format: uuid
+        tournamentId:
+          type: string
+          format: uuid
+        gamesPlayed:
+          type: integer
+        totalPins:
+          type: integer
+        currentAverage:
+          type: number
+        highestGame:
+          type: integer
+        highestSeries:
+          type: integer
+        matchesPlayed:
+          type: integer
+        matchesContributedToWin:
+          type: integer
+        currentHandicap:
+          type: integer
+
+    PlayerTournamentStatsResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/PlayerTournamentStats'
+
+    TeamTournamentStats:
+      type: object
+      properties:
+        teamId:
+          type: string
+          format: uuid
+        tournamentId:
+          type: string
+          format: uuid
+        totalMatchesPlayed:
+          type: integer
+        matchesWon:
+          type: integer
+        matchesLost:
+          type: integer
+        totalTeamScore:
+          type: integer
+        teamAverage:
+          type: number
+        totalPoints:
+          type: integer
+        pointsPercentage:
+          type: number
+        maxPossiblePoints:
+          type: integer
+        rankPosition:
+          type: integer
+          nullable: true
+        pointsBreakdown:
+          type: object
+          properties:
+            totalGamePointsWon:
+              type: integer
+            seriesPointsWon:
+              type: integer
+
+    TeamTournamentStatsResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/TeamTournamentStats'
+
+    TournamentPlayerStats:
+      type: object
+      properties:
+        playerId:
+          type: string
+          format: uuid
+        playerName:
+          type: string
+        teamId:
+          type: string
+          format: uuid
+        tournamentId:
+          type: string
+          format: uuid
+        gamesPlayed:
+          type: integer
+        totalPins:
+          type: integer
+        currentAverage:
+          type: number
+        highestGame:
+          type: integer
+        highestSeries:
+          type: integer
+        matchesPlayed:
+          type: integer
+        matchesContributedToWin:
+          type: integer
+
+    TournamentPlayersStatsListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TournamentPlayerStats'
+
+    TournamentTeamStats:
+      type: object
+      properties:
+        teamId:
+          type: string
+          format: uuid
+        teamName:
+          type: string
+        tournamentId:
+          type: string
+          format: uuid
+        totalMatchesPlayed:
+          type: integer
+        matchesWon:
+          type: integer
+        matchesLost:
+          type: integer
+        totalTeamScore:
+          type: integer
+        teamAverage:
+          type: number
+        totalPoints:
+          type: integer
+        pointsPercentage:
+          type: number
+        maxPossiblePoints:
+          type: integer
+        rankPosition:
+          type: integer
+
+    TournamentTeamsStatsListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TournamentTeamStats'
+
+    # ── Player-centric ──────────────────────────────────────────────────────
+    PlayerDashboard:
+      type: object
+      properties:
+        player:
+          $ref: '#/components/schemas/Player'
+        currentTeams:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              captainName:
+                type: string
+              tournamentName:
+                type: string
+              tournamentId:
+                type: string
+                format: uuid
+              tournamentStatus:
+                type: string
+              role:
+                type: string
+              joinedDate:
+                type: string
+                format: date-time
+        overallStatistics:
+          type: object
+          properties:
+            tournamentsPlayed:
+              type: integer
+            totalGames:
+              type: integer
+            totalPins:
+              type: integer
+            overallAverage:
+              type: number
+            careerHighGame:
+              type: integer
+            careerHighSeries:
+              type: integer
+            totalMatches:
+              type: integer
+        recentTournamentStats:
+          type: array
+          items:
+            type: object
+            properties:
+              playerId:
+                type: string
+                format: uuid
+              tournamentId:
+                type: string
+                format: uuid
+              teamId:
+                type: string
+                format: uuid
+                nullable: true
+              gamesPlayed:
+                type: integer
+              totalPins:
+                type: integer
+              currentAverage:
+                type: number
+              highestGame:
+                type: integer
+              highestSeries:
+                type: integer
+              matchesPlayed:
+                type: integer
+              tournamentName:
+                type: string
+              tournamentStatus:
+                type: string
+              startDate:
+                type: string
+                format: date-time
+              endDate:
+                type: string
+                format: date-time
+        recentScores:
+          type: array
+          items:
+            type: object
+            properties:
+              sessionId:
+                type: string
+                format: uuid
+              tournamentId:
+                type: string
+                format: uuid
+              teamId:
+                type: string
+                format: uuid
+                nullable: true
+              matchId:
+                type: string
+                format: uuid
+                nullable: true
+              sessionName:
+                type: string
+              sessionDate:
+                type: string
+                format: date-time
+              tournamentName:
+                type: string
+              scores:
+                type: array
+                items:
+                  type: integer
+              totalPins:
+                type: integer
+
+    PlayerDashboardResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/PlayerDashboard'
+
+    PlayerTeamMembership:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        captainName:
+          type: string
+        captainEmail:
+          type: string
+        teamStatus:
+          type: string
+        role:
+          type: string
+        isActive:
+          type: boolean
+        joinedDate:
           type: string
           format: date-time
-          description: Timestamp of the health check
-        uptime:
+        leftDate:
+          type: string
+          format: date-time
+          nullable: true
+        tournamentId:
+          type: string
+          format: uuid
+        tournamentName:
+          type: string
+        tournamentStatus:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+
+    PlayerTeamListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerTeamMembership'
+
+    PlayerStatisticsEntry:
+      type: object
+      properties:
+        playerId:
+          type: string
+          format: uuid
+        tournamentId:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+          nullable: true
+        gamesPlayed:
+          type: integer
+        totalPins:
+          type: integer
+        currentAverage:
           type: number
-          description: Server uptime in seconds
-        memory:
-          type: object
-          description: Memory usage information
+        currentHandicap:
+          type: integer
+        highestGame:
+          type: integer
+        highestSeries:
+          type: integer
+        matchesPlayed:
+          type: integer
+        lastUpdated:
+          type: string
+          format: date-time
+        tournamentName:
+          type: string
+        tournamentStatus:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        sessionType:
+          type: string
+
+    PlayerStatsListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerStatisticsEntry'
+
+    LeagueHistoryEntry:
+      type: object
+      properties:
+        leagueId:
+          type: string
+          format: uuid
+        leagueName:
+          type: string
+        leagueType:
+          type: string
+        teamId:
+          type: string
+          format: uuid
+        teamName:
+          type: string
+        role:
+          type: string
+        joinedDate:
+          type: string
+          format: date-time
+        leftDate:
+          type: string
+          format: date-time
+          nullable: true
+        tournamentId:
+          type: string
+          format: uuid
+        tournamentName:
+          type: string
+        tournamentStatus:
+          type: string
+        year:
+          type: integer
+          nullable: true
+        season:
+          type: string
+          nullable: true
+
+    LeagueHistoryListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeagueHistoryEntry'
+
+    # ── Schedule / round-robin ──────────────────────────────────────────────
+    RoundRobinPreviewResponse:
+      type: object
+      properties:
         data:
           type: object
           properties:
-            tournaments:
+            tournamentId:
+              type: string
+              format: uuid
+            totalTeams:
               type: integer
-              description: Number of tournaments
+            hasOddTeams:
+              type: boolean
+            sessionsRequired:
+              type: integer
+            sessionsAvailable:
+              type: integer
+            canFitInTournament:
+              type: boolean
+            totalMatches:
+              type: integer
+            expectedMatches:
+              type: integer
+            matchesPerTeam:
+              type: integer
+            matchesPerSession:
+              type: integer
+            teamsPerSession:
+              type: integer
+            isValidSchedule:
+              type: boolean
             teams:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  name:
+                    type: string
+                  seedNumber:
+                    type: integer
+                    nullable: true
+            schedule:
+              type: array
+              items:
+                type: object
+            validationIssues:
+              type: array
+              items:
+                type: object
+            byeRotation:
+              type: array
+              nullable: true
+              items:
+                type: object
+                properties:
+                  session:
+                    type: integer
+                  byeTeam:
+                    type: string
+
+    RoundRobinGenerateResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            tournamentId:
+              type: string
+              format: uuid
+            totalMatchesCreated:
               type: integer
-              description: Number of teams
-            players:
+            totalSessionsCreated:
               type: integer
-              description: Number of players
+            totalTeams:
+              type: integer
+            sessionsRequired:
+              type: integer
+            wasForced:
+              type: boolean
+            createdMatches:
+              type: array
+              items:
+                $ref: '#/components/schemas/Match'
+            createdSessions:
+              type: array
+              items:
+                $ref: '#/components/schemas/Session'
+
+    RoundMatchesResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            tournamentId:
+              type: string
+              format: uuid
+            session:
+              type: integer
+            matchCount:
+              type: integer
+            teamsPlaying:
+              type: integer
+            expectedTeamsPlaying:
+              type: integer
+            allTeamsPlaying:
+              type: boolean
+            byeTeam:
+              type: object
+              nullable: true
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+            hasConflicts:
+              type: boolean
+            isValidSession:
+              type: boolean
+            conflicts:
+              type: array
+              items:
+                type: object
             matches:
-              type: integer
-              description: Number of matches
-            leagueSessions:
-              type: integer
-              description: Number of league sessions
+              type: array
+              items:
+                $ref: '#/components/schemas/MatchEnriched'
 
-    Error:
+    ScheduleSummaryResponse:
       type: object
-      required:
-        - error
       properties:
-        error:
+        data:
+          type: object
+          properties:
+            tournamentId:
+              type: string
+              format: uuid
+            totalTeams:
+              type: integer
+            totalSessions:
+              type: integer
+            expectedSessions:
+              type: integer
+            hasCorrectSessions:
+              type: boolean
+            matchStats:
+              type: object
+              properties:
+                total:
+                  type: integer
+                scheduled:
+                  type: integer
+                inProgress:
+                  type: integer
+                completed:
+                  type: integer
+                cancelled:
+                  type: integer
+                postponed:
+                  type: integer
+            expectedMatches:
+              type: integer
+            isCompleteRoundRobin:
+              type: boolean
+            hasScheduleConflicts:
+              type: boolean
+            overallValidation:
+              type: object
+              properties:
+                allTeamsPlayingPerSession:
+                  type: boolean
+                noTeamConflicts:
+                  type: boolean
+                completeRoundRobin:
+                  type: boolean
+            sessionAnalysis:
+              type: array
+              items:
+                type: object
+            sessions:
+              type: array
+              items:
+                $ref: '#/components/schemas/Session'
+
+    ScheduleValidationResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            tournamentId:
+              type: string
+              format: uuid
+            totalTeams:
+              type: integer
+            totalMatches:
+              type: integer
+            isValid:
+              type: boolean
+            issues:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  message:
+                    type: string
+            warnings:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  message:
+                    type: string
+
+    # ── League validation ───────────────────────────────────────────────────
+    AssignmentValidationResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            isValid:
+              type: boolean
+            violations:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  message:
+                    type: string
+                  conflictingTeam:
+                    type: string
+                  conflictingTournament:
+                    type: string
+            warnings:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  message:
+                    type: string
+
+    LeagueViolation:
+      type: object
+      properties:
+        id:
           type: string
-          description: Error message
-
-    StatusUpdate:
-      type: object
-      required:
-        - status
-      properties:
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+        leagueId:
+          type: string
+          format: uuid
+        playerId:
+          type: string
+          format: uuid
+          nullable: true
+        violationType:
+          type: string
         status:
           type: string
-          description: New status value
+        teamName:
+          type: string
+        leagueName:
+          type: string
+        playerName:
+          type: string
+          nullable: true
+        detectedAt:
+          type: string
+          format: date-time
+
+    LeagueViolationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeagueViolation'
+
+    # ── Admin upsert schemas ────────────────────────────────────────────────
+    PlayerStatisticsUpsert:
+      type: object
+      properties:
+        teamId:
+          type: string
+          format: uuid
+        gamesPlayed:
+          type: integer
+          default: 0
+        totalPins:
+          type: integer
+          default: 0
+        currentAverage:
+          type: number
+          default: 0
+        highestGame:
+          type: integer
+          default: 0
+        highestSeries:
+          type: integer
+          default: 0
+        matchesPlayed:
+          type: integer
+          default: 0
+
+    PlayerStatisticsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            playerId:
+              type: string
+              format: uuid
+            tournamentId:
+              type: string
+              format: uuid
+            teamId:
+              type: string
+              format: uuid
+              nullable: true
+            gamesPlayed:
+              type: integer
+            totalPins:
+              type: integer
+            currentAverage:
+              type: number
+            currentHandicap:
+              type: integer
+            highestGame:
+              type: integer
+            highestSeries:
+              type: integer
+            matchesPlayed:
+              type: integer
+            lastUpdated:
+              type: string
+              format: date-time
+
+    TeamStatisticsUpsert:
+      type: object
+      properties:
+        totalMatchesPlayed:
+          type: integer
+          default: 0
+        matchesWon:
+          type: integer
+          default: 0
+        matchesLost:
+          type: integer
+          default: 0
+        totalTeamScore:
+          type: integer
+          default: 0
+        teamAverage:
+          type: number
+          default: 0
+        totalPoints:
+          type: integer
+          default: 0
+        pointsPercentage:
+          type: number
+          default: 0
+        rankPosition:
+          type: integer
+          nullable: true
+
+    TeamStatisticsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            teamId:
+              type: string
+              format: uuid
+            tournamentId:
+              type: string
+              format: uuid
+            totalMatchesPlayed:
+              type: integer
+            matchesWon:
+              type: integer
+            matchesLost:
+              type: integer
+            totalTeamScore:
+              type: integer
+            teamAverage:
+              type: number
+            totalPoints:
+              type: integer
+            pointsPercentage:
+              type: number
+            rankPosition:
+              type: integer
+              nullable: true
+            lastUpdated:
+              type: string
+              format: date-time
+
+security:
+  - bearerAuth: []
