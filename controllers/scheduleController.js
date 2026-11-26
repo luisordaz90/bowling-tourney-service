@@ -84,30 +84,6 @@ const getSessionsForTournament = async (req, res) => {
   }
 };
 
-const updateSessionStatus = async (req, res) => {
-  try {
-    const { status } = req.body;
-
-    if (!['scheduled', 'active', 'completed', 'cancelled'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-
-    const result = await query(
-      `UPDATE tournament_sessions SET status = $1 WHERE id = $2 RETURNING *`,
-      [status, req.params.id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'League session not found' });
-    }
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Error updating session status:', error);
-    res.status(500).json({ error: 'Failed to update session status' });
-  }
-};
-
 const previewMatchMaking = async (req, res) => {
   try {
     const tournamentResult = await query('SELECT * FROM tournaments WHERE id = $1', [req.params.tournamentId]);
@@ -831,7 +807,6 @@ const generateMatches = async (req, res) => {
 module.exports = {
   registerSessionToTournament,
   getSessionsForTournament,
-  updateSessionStatus,
   previewMatchMaking,
   generateMatches,
   getTournamentSchedule,

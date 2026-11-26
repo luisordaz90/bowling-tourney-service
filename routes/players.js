@@ -5,6 +5,7 @@ const {
   createPlayer,
   getPlayers,
   getPlayerById,
+  updatePlayer,
   deletePlayer,
   getPlayerDashboard,
   getPlayerTeams,
@@ -15,6 +16,7 @@ const { getPlayerLeagueHistory } = require('../controllers/leagueController');
 router.post('/', authorize('player:create'), createPlayer);
 router.get('/', getPlayers);
 router.get('/:id', getPlayerById);
+router.put('/:id', authorize('player:update'), updatePlayer);
 router.delete('/:id', deletePlayer);
 
 // Deprecated -- use /api/me/* instead
@@ -27,7 +29,8 @@ const deprecate = (replacement) => (req, res, next) => {
 };
 
 router.get('/:playerId/dashboard', deprecate('/me/dashboard'), getPlayerDashboard);
-router.get('/:playerId/teams', deprecate('/me/teams'), getPlayerTeams);
+// Supported: admins need another player's team memberships (/me/teams only covers the caller)
+router.get('/:playerId/teams', getPlayerTeams);
 router.get('/:playerId/statistics', deprecate('/me/statistics'), getPlayerStatistics);
 router.get('/:playerId/league-history', deprecate('/me/league-history'), getPlayerLeagueHistory);
 

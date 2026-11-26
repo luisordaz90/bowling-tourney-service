@@ -121,11 +121,10 @@ describe('/api/me endpoints', () => {
 });
 
 describe('Deprecated player routes return Deprecation header', () => {
-  it('GET /api/players/:playerId/teams returns Deprecation header', async () => {
+  it('GET /api/players/:playerId/teams is supported (no Deprecation header)', async () => {
     const res = await request(app).get(`/api/players/${playerId}/teams`);
     expect(res.status).toBe(200);
-    expect(res.headers.deprecation).toBe('true');
-    expect(res.headers.link).toContain('/api/me/teams');
+    expect(res.headers.deprecation).toBeUndefined();
   });
 
   it('GET /api/players/:playerId/statistics returns Deprecation header', async () => {
