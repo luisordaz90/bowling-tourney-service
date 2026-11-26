@@ -34,6 +34,12 @@ async function resolveLeagueId(req) {
 const PERMISSIONS = {
   'player:create': (req) => req.player.role === 'superadmin' || req.player.role === 'league_admin',
 
+  // Admins can edit any player; players can edit their own profile
+  'player:update': (req) => {
+    if (req.player.role === 'superadmin' || req.player.role === 'league_admin') return true;
+    return !!req.player.id && req.player.id === req.params.id;
+  },
+
   'league:create': (req) => req.player.role === 'superadmin',
 
   'league:update': async (req) => {

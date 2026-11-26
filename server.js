@@ -24,7 +24,6 @@ const scoringRoutes = require('./routes/scoring');
 const standingsRoutes = require('./routes/standings');
 const teamRoutes = require('./routes/teams');
 const playerRoutes = require('./routes/players');
-const sessionRoutes = require('./routes/sessions');
 const sessionsFlatRoutes = require('./routes/sessionsFlat');
 const scheduleFlatRoutes = require('./routes/scheduleFlat');
 const matchRoutes = require('./routes/matches');
@@ -160,7 +159,6 @@ app.use('/api/scores', outputFormatter, scoresFlatRoutes);
 app.use('/api/matches', outputFormatter, matchesFlatRoutes);
 app.use('/api/standings', outputFormatter, standingsFlatRoutes);
 app.use('/api/statistics', outputFormatter, statisticsFlatRoutes);
-app.use('/api/sessions', outputFormatter, sessionRoutes); // legacy PUT /:id/status
 app.use('/api/matches', outputFormatter, matchRoutes); // legacy match routes
 app.use('/api/player-statistics', outputFormatter, playerStatisticsRoutes);
 app.use('/api/team-statistics', outputFormatter, teamStatisticsRoutes);

@@ -4,8 +4,6 @@ const {
     getPlayersMatchScore,
     addTeamScoreInMatch,
     getTeamsScoreInMatch,
-    getMatchById,
-    updateMatchStatus,
     calculateTeamScoreInMatch
 } = require('../controllers/matchesController');
 
@@ -17,9 +15,7 @@ const deprecate = (replacement) => (req, res, next) => {
   next();
 };
 
-// These are now handled by matchesFlat.js — kept for backward compat
-router.get('/:matchId', deprecate('/matches/:matchId'), getMatchById);
-router.put('/:matchId/status', deprecate('/matches/:matchId/status'), updateMatchStatus);
+// GET /:matchId and PUT /:matchId/status are served by matchesFlat.js (mounted first)
 
 router.get('/:matchId/player-scores', getPlayersMatchScore);
 
